@@ -33,7 +33,6 @@
 <svelte:window onkeydown={onKeydown} />
 
 <main>
-  <h1>SUPER MARIO LAND</h1>
   <GameCanvas bind:this={gameCanvas} />
   <p class="controls">
     ←/→ move · ↓ duck · SPACE jump · C run · S start · F fullscreen
@@ -52,13 +51,6 @@
     align-items: center;
     gap: 12px;
     padding: 24px 0;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 22px;
-    letter-spacing: 4px;
-    color: #f8d870;
   }
 
   .controls {

@@ -216,7 +216,8 @@ class GamepadState {
 
   async #loadConfig(): Promise<void> {
     try {
-      const response = await fetch('/codemonkey.json')
+      // BASE_URL-relative so it works under a GitHub Pages subpath
+      const response = await fetch(`${import.meta.env.BASE_URL}codemonkey.json`)
       if (!response.ok) return
 
       const config = await response.json()

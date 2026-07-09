@@ -1,0 +1,14 @@
+{
+  "gamepad": {
+    "buttons": {
+      "FACEBTN_LEFT": { "action": "run", "key": "C" },
+      "FACEBTN_BOTTOM": { "action": "jump", "key": "SPACE" },
+      "DPAD_UP": { "action": "up" },
+      "DPAD_DOWN": { "action": "down" },
+      "DPAD_LEFT": { "action": "left" },
+      "DPAD_RIGHT": { "action": "right" },
+      "START": { "action": "start" },
+      "HOME": { "action": "fullscreen" }
+    }
+  }
+}

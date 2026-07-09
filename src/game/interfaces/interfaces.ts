@@ -18,6 +18,7 @@ export interface IBrickConstructor extends ISpriteConstructor {
 
 export interface ICollectibleConstructor extends ISpriteConstructor {
   points: number
+  animated?: boolean
 }
 
 export interface IPlatformConstructor extends ISpriteConstructor {

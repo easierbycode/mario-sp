@@ -336,9 +336,12 @@ export class GameScene extends Phaser.Scene {
       // restart the game scene
       this.scene.restart()
     } else if (_portal.name === 'exit') {
+      // level complete — continue into levele1 (ported from the mario repo)
+      this.registry.set('level', 'levele1')
+      this.registry.set('spawn', { x: 16, y: 994, dir: 'down' })
       this.scene.stop('GameScene')
       this.scene.stop('HUDScene')
-      this.scene.start('MenuScene')
+      this.scene.start('LevelE1Scene')
     }
   }
 

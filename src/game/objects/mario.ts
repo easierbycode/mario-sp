@@ -2,10 +2,23 @@ import Phaser from 'phaser'
 import { gamepad } from '../../lib/gamepad.svelte'
 import type { ISpriteConstructor } from '../interfaces/interfaces'
 
+// Game Boy (Super Mario Land) profile
 const WALK_MAX_VELOCITY = 50
 const RUN_MAX_VELOCITY = 85
 const WALK_ACCELERATION = 500
 const RUN_ACCELERATION = 750
+const JUMP_VELOCITY = -180
+
+// GBA SMB3 (SMA4) profile, ported from the mario repo — per-frame
+// acceleration ramp at 60fps, skid deceleration, and running jumps
+// that get higher with horizontal speed
+const SMA4 = {
+  WALK_MAX_VELOCITY: 90,
+  RUN_MAX_VELOCITY: 210,
+  ACCELERATION: 3.28125,
+  DECELERATION: 3.28125,
+  SKID_DECELERATION: 7.5,
+}
 
 export class Mario extends Phaser.GameObjects.Sprite {
   declare body: Phaser.Physics.Arcade.Body
@@ -13,6 +26,7 @@ export class Mario extends Phaser.GameObjects.Sprite {
   // variables
   private currentScene: Phaser.Scene
   private marioSize: string
+  private acceleration: number = 0
   private isJumping: boolean
   private isDying: boolean
   private isVulnerable: boolean
@@ -26,7 +40,7 @@ export class Mario extends Phaser.GameObjects.Sprite {
   }
 
   /** Held state for an action, merged from keyboard and gamepad. */
-  public actionIsDown(action: 'left' | 'right' | 'down' | 'jump' | 'run'): boolean {
+  public actionIsDown(action: 'up' | 'left' | 'right' | 'down' | 'jump' | 'run'): boolean {
     return this.keys.get(action)?.isDown || gamepad.isDown(action)
   }
 
@@ -52,6 +66,7 @@ export class Mario extends Phaser.GameObjects.Sprite {
 
     // input — jump and run keys follow codemonkey.json (SPACE / C by default)
     this.keys = new Map([
+      ['up', this.addKey(gamepad.keyFor('up') ?? 'UP')],
       ['left', this.addKey('LEFT')],
       ['right', this.addKey('RIGHT')],
       ['down', this.addKey('DOWN')],
@@ -76,8 +91,7 @@ export class Mario extends Phaser.GameObjects.Sprite {
       this.handleAnimations()
     } else {
       this.setFrame(12)
-      if (this.y > this.currentScene.sys.canvas.height) {
-        this.currentScene.scene.stop('GameScene')
+      if (this.y > this.currentScene.physics.world.bounds.bottom) {
         this.currentScene.scene.stop('HUDScene')
         this.currentScene.scene.start('MenuScene')
       }
@@ -94,7 +108,7 @@ export class Mario extends Phaser.GameObjects.Sprite {
   }
 
   private handleInput() {
-    if (this.y > this.currentScene.sys.canvas.height) {
+    if (this.y > this.currentScene.physics.world.bounds.bottom) {
       // mario fell into a hole
       this.isDying = true
     }
@@ -109,6 +123,15 @@ export class Mario extends Phaser.GameObjects.Sprite {
       this.isJumping = false
     }
 
+    // scenes pick a movement profile via the physics registry key
+    if (this.currentScene.registry.get('physics') === 'sma4') {
+      this.handleSma4Input()
+    } else {
+      this.handleGbInput()
+    }
+  }
+
+  private handleGbInput() {
     // holding run (B on the Game Boy) raises the speed cap, as in the original
     const running = this.actionIsDown('run')
     const acceleration = running ? RUN_ACCELERATION : WALK_ACCELERATION
@@ -128,7 +151,95 @@ export class Mario extends Phaser.GameObjects.Sprite {
 
     // handle jumping
     if (this.actionIsDown('jump') && !this.isJumping) {
-      this.body.setVelocityY(-180)
+      this.body.setVelocityY(JUMP_VELOCITY)
+      this.isJumping = true
+    }
+  }
+
+  private handleSma4Input() {
+    // scale the per-frame constants by the actual frame time
+    const timeScale = this.currentScene.game.loop.delta / (1000 / 60)
+
+    const left = this.actionIsDown('left')
+    const right = this.actionIsDown('right')
+
+    // running only raises the cap while steering
+    if ((left || right) && this.actionIsDown('run')) {
+      this.body.maxVelocity.x = SMA4.RUN_MAX_VELOCITY
+    } else {
+      this.body.maxVelocity.x = SMA4.WALK_MAX_VELOCITY
+    }
+
+    if (
+      this.body.onFloor() ||
+      this.body.touching.down ||
+      this.body.blocked.down
+    ) {
+      this.body.setVelocityY(0)
+    }
+
+    let velocity = this.body.velocity.x
+
+    // handle movements to left and right — acceleration ramps up while
+    // steering and bleeds off (faster when skidding) when released
+    if (right) {
+      if (this.acceleration < this.body.maxVelocity.x) {
+        this.acceleration += SMA4.ACCELERATION * timeScale
+        if (this.acceleration > this.body.maxVelocity.x)
+          this.acceleration = this.body.maxVelocity.x
+      }
+
+      this.body.setAccelerationX(this.acceleration)
+      this.setFlipX(false)
+    } else if (left) {
+      if (this.acceleration < this.body.maxVelocity.x) {
+        this.acceleration += SMA4.ACCELERATION * timeScale
+        if (this.acceleration > this.body.maxVelocity.x)
+          this.acceleration = this.body.maxVelocity.x
+      }
+
+      this.body.setAccelerationX(-this.acceleration)
+      this.setFlipX(true)
+    } else {
+      if (this.acceleration !== 0) {
+        this.acceleration -= SMA4.DECELERATION * timeScale
+        if (this.acceleration < 0) this.acceleration = 0
+      }
+
+      let decel = SMA4.DECELERATION * timeScale
+
+      if (
+        (this.body.velocity.x < 0 && this.body.acceleration.x > 0) ||
+        (this.body.velocity.x > 0 && this.body.acceleration.x < 0)
+      ) {
+        decel = SMA4.SKID_DECELERATION * timeScale
+      }
+
+      if (this.flipX) {
+        velocity += decel
+        if (velocity > 0) velocity = 0
+        this.body.setVelocityX(velocity)
+        this.body.setAccelerationX(-this.acceleration)
+      } else {
+        velocity -= decel
+        if (velocity < 0) velocity = 0
+        this.body.setVelocityX(velocity)
+        this.body.setAccelerationX(this.acceleration)
+      }
+    }
+
+    // handle jumping — faster running means a higher jump, as in SMB3
+    if (this.actionIsDown('jump') && !this.isJumping) {
+      let jumpVelocity = -206.25
+      if (Math.abs(velocity) > 180) {
+        jumpVelocity = -236.25
+      } else if (Math.abs(velocity) > 120) {
+        jumpVelocity = -221.25
+      } else if (Math.abs(velocity) > 60) {
+        jumpVelocity = -213.75
+      }
+
+      this.body.setVelocityY(jumpVelocity)
       this.isJumping = true
     }
   }

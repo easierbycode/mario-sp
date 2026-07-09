@@ -65,6 +65,27 @@
       },
       "repeat": -1,
       "frameRate": 18
+    },
+    {
+      "key": "turtleWalk",
+      "frames": {
+        "typeOfGeneration": "generateFrameNumbers",
+        "key": "turtle-red",
+        "start": 0,
+        "end": 1
+      },
+      "repeat": -1,
+      "frameRate": 9
+    },
+    {
+      "key": "coin-impact",
+      "frames": {
+        "typeOfGeneration": "generateFrameNumbers",
+        "key": "coin-impact",
+        "start": 0,
+        "end": 4
+      },
+      "frameRate": 18
     }
   ]
 }

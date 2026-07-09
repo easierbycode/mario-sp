@@ -140,6 +140,124 @@
           "frameWidth": 8,
           "frameHeight": 8
         }
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levele1",
+        "url": "./assets/maps/levele1.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levele1RoomAB",
+        "url": "./assets/maps/levele1-roomab.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levele1RoomC",
+        "url": "./assets/maps/levele1-roomc.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levele1RoomDEF",
+        "url": "./assets/maps/levele1-roomdef.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levele1RoomGHIJK",
+        "url": "./assets/maps/levele1-roomghijk.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levele1RoomHM",
+        "url": "./assets/maps/levele1-roomhm.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levele1RoomKL",
+        "url": "./assets/maps/levele1-roomkl.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levele1RoomO",
+        "url": "./assets/maps/levele1-roomo.json"
+      },
+      {
+        "type": "image",
+        "key": "tiles-sma4",
+        "url": "./assets/tiles/tiles-sma4.png"
+      },
+      {
+        "type": "spritesheet",
+        "key": "sma4",
+        "url": "./assets/tiles/tiles-sma4.png",
+        "frameConfig": {
+          "frameWidth": 16,
+          "frameHeight": 16,
+          "spacing": 2
+        }
+      },
+      {
+        "type": "image",
+        "key": "tiles-smb3-bw",
+        "url": "./assets/tiles/tiles-smb3-bw.png"
+      },
+      {
+        "type": "image",
+        "key": "tiles-sweets",
+        "url": "./assets/tiles/tiles-sweets.png"
+      },
+      {
+        "type": "image",
+        "key": "a-coin-0",
+        "url": "./assets/images/a-coin-0.png"
+      },
+      {
+        "type": "image",
+        "key": "bg-level-e1",
+        "url": "./assets/images/bg-level-e1.png"
+      },
+      {
+        "type": "image",
+        "key": "clouds",
+        "url": "./assets/images/clouds.png"
+      },
+      {
+        "type": "image",
+        "key": "flying-goomba-0",
+        "url": "./assets/images/flying-goomba-0.png"
+      },
+      {
+        "type": "image",
+        "key": "metal-brick",
+        "url": "./assets/images/metal-brick.png"
+      },
+      {
+        "type": "image",
+        "key": "skyline-buildings",
+        "url": "./assets/images/skyline-buildings.png"
+      },
+      {
+        "type": "image",
+        "key": "waterside",
+        "url": "./assets/images/waterside.png"
+      },
+      {
+        "type": "spritesheet",
+        "key": "coin-impact",
+        "url": "./assets/sprites/coin-impact.png",
+        "frameConfig": {
+          "frameWidth": 20,
+          "frameHeight": 16
+        }
+      },
+      {
+        "type": "spritesheet",
+        "key": "turtle-red",
+        "url": "./assets/sprites/turtle-red.png",
+        "frameConfig": {
+          "frameWidth": 18,
+          "frameHeight": 27
+        }
       }
     ]
   }

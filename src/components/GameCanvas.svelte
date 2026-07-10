@@ -23,10 +23,19 @@
 
   export function enterFullscreen(): void {
     if (document.fullscreenElement) return
-    // may be rejected without a user gesture (e.g. from a gamepad button)
-    frame?.requestFullscreen()?.catch((error) => {
+    // iPhone Safari has no element fullscreen API at all — bail rather than
+    // throw a TypeError inside the caller's pointer handler
+    const request =
+      frame?.requestFullscreen ?? (frame as any)?.webkitRequestFullscreen
+    if (!frame || typeof request !== 'function') return
+    try {
+      // may be rejected without a user gesture (e.g. from a gamepad button)
+      Promise.resolve(request.call(frame)).catch((error) => {
+        console.log('Fullscreen request rejected:', error)
+      })
+    } catch (error) {
       console.log('Fullscreen request rejected:', error)
-    })
+    }
   }
 </script>
 

@@ -29,6 +29,8 @@
   const rightPointers = new Map<number, 'run' | 'jump' | 'lock'>()
   // live A touches, so the A button can materialize under each finger
   let aTouches = $state<{ id: number; x: number; y: number }[]>([])
+  // the B finger's touch point — the B button rides under it while held
+  let bTouch = $state<{ x: number; y: number } | null>(null)
   let runLocked = $state(false)
   let bHeld = $state(false)
   let aHeld = $state(false)
@@ -143,6 +145,8 @@
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
     if (role === 'jump') {
       aTouches = [...aTouches, { id: event.pointerId, x: p.x, y: p.y }]
+    } else {
+      bTouch = { x: p.x, y: p.y }
     }
     syncButtons()
     haptics.press()
@@ -153,6 +157,8 @@
     if (!rightPointers.delete(event.pointerId)) return
     if (role === 'jump') {
       aTouches = aTouches.filter((t) => t.id !== event.pointerId)
+    } else if (role === 'run') {
+      bTouch = null
     }
     syncButtons()
     if (role !== 'lock') haptics.release()
@@ -210,11 +216,18 @@
       onpointerup={buttonsUp}
       onpointercancel={buttonsUp}
     >
-      <span class="side b {bHeld ? 'on' : ''} {runLocked ? 'locked' : ''}">
+      <!-- pressed buttons ride under the finger (dyn); the anchors are idle
+           guides that vanish while their button is finger-held -->
+      <span class="side b {runLocked && !bTouch ? 'on' : ''} {runLocked ? 'locked' : ''}">
         <span class="lock-chip">{runLocked ? '🔒 B LOCKED' : 'LOCK B'}</span>
-        <span class="face">B</span>
+        {#if !bTouch}<span class="face">B</span>{/if}
       </span>
-      <span class="side a {aHeld ? 'on' : ''}"><span class="face">A</span></span>
+      <span class="side a">
+        {#if aTouches.length === 0}<span class="face">A</span>{/if}
+      </span>
+      {#if bTouch}
+        <span class="face dyn" style={`left:${bTouch.x}px;top:${bTouch.y}px`}>B</span>
+      {/if}
       {#each aTouches as t (t.id)}
         <span class="face dyn" style={`left:${t.x}px;top:${t.y}px`}>A</span>
       {/each}
@@ -261,7 +274,8 @@
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
-    font-family: 'Courier New', monospace;
+    /* Orbitron — the CMG launcher face (self-hosted, loaded in main.ts) */
+    font-family: 'Orbitron', 'Courier New', monospace;
   }
 
   /* Nintendo-red launcher theme → NES cabinet grays (#d5d5d8 / #88848b) */
@@ -330,9 +344,10 @@
   .side.b { left: 0; }
   .side.a { right: 0; }
 
-  /* B rides slightly above A */
-  .side.b .face { bottom: 26%; }
-  .side.a .face { bottom: 14%; }
+  /* B rides well above A, spreading the two thumb contacts apart so the
+     hardware registers them as distinct touches */
+  .side.b .face { bottom: 44%; }
+  .side.a .face { bottom: 8%; }
 
   .face {
     position: absolute;
@@ -348,10 +363,10 @@
     border: 2px solid var(--btn-edge);
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
     color: var(--label);
-    font-weight: bold;
+    font-weight: 800;
     font-size: min(4.4vmin, 20px);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-    opacity: 0.55;
+    opacity: 0.35;
     transition: transform 70ms ease-out, opacity 70ms ease-out;
   }
 

@@ -3,15 +3,16 @@
   import { haptics } from '../lib/haptics'
   import { touch } from '../lib/touch.svelte'
 
-  // TurboGrafx-16-style touch scheme:
+  // Touch scheme:
   //  - left half of the screen: touch anywhere to plant a virtual analog
   //    stick, drag to steer
-  //  - right half: its left half is the B button (run), its right half is the
-  //    A button (jump). While a button is held, a second touch on the same
-  //    side fires the OTHER button — so holding B with the thumb tip and
-  //    tapping beside it jumps without leaving the run region.
-  //  - SELECT / RUN pills (fullscreen re-entry / start) sit at the bottom edge
-  // Every press/release lands a short haptic tick (see lib/haptics.ts).
+  //  - right half: its left half is a virtual B button (run), its right half
+  //    is a virtual A button (jump). A second touch while B is already held is
+  //    ALWAYS A — even on the B side — so holding B with the thumb tip and
+  //    tapping next to it jumps while running.
+  //  - SELECT / RUN pills sit centered vertically in the game's bottom tile
+  //    band (the ground strip is 16 of 144 source pixels ≈ 11% of the height)
+  // Presses and releases land short haptic ticks (see lib/haptics.ts).
   // Default skin is TG-16 black-and-red; touch.theme === 'nintendo' (the
   // launcher's Nintendo-red skin) swaps the buttons to NES cabinet gray.
 
@@ -22,10 +23,10 @@
   let stickPointer: number | null = null
   let stickDirections = ''
 
+  // every active right-side finger, in the order it landed: pointerId → action
+  const rightPointers = new Map<number, 'run' | 'jump'>()
   let bHeld = $state(false)
   let aHeld = $state(false)
-  let bPointer: number | null = null
-  let aPointer: number | null = null
 
   let pressed = $state<Record<string, boolean>>({})
 
@@ -61,6 +62,7 @@
   }
 
   function stickDown(event: PointerEvent) {
+    event.preventDefault()
     if (stickPointer !== null) return
     stickPointer = event.pointerId
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
@@ -84,52 +86,50 @@
     touch.setDirections(new Set())
   }
 
-  // ── right half: B (left side, run) and A (right side, jump) ──
-  function pressB(pointerId: number) {
-    bPointer = pointerId
-    bHeld = true
-    touch.press('run')
-    haptics.press()
-  }
-
-  function pressA(pointerId: number) {
-    aPointer = pointerId
-    aHeld = true
-    touch.press('jump')
-    haptics.press()
+  // ── right half: virtual B (left side, run) and A (right side, jump) ──
+  // Re-derive held state from the live finger map, pressing/releasing the
+  // shared touch state only on 0↔1 transitions so overlapping fingers on the
+  // same button can't drop it early.
+  function syncButtons() {
+    const actions = [...rightPointers.values()]
+    const run = actions.includes('run')
+    const jump = actions.includes('jump')
+    if (run !== bHeld) {
+      bHeld = run
+      if (run) touch.press('run')
+      else touch.release('run')
+    }
+    if (jump !== aHeld) {
+      aHeld = jump
+      if (jump) touch.press('jump')
+      else touch.release('jump')
+    }
   }
 
   function buttonsDown(event: PointerEvent) {
+    event.preventDefault()
     const p = zonePoint(event)
     const onBSide = p.x < p.w / 2
-    // the touched side's button — unless it's already held, in which case the
-    // second touch fires the other button (hold-B-and-tap-to-jump)
-    let target: 'b' | 'a' | null = onBSide
-      ? (bPointer === null ? 'b' : aPointer === null ? 'a' : null)
-      : (aPointer === null ? 'a' : bPointer === null ? 'b' : null)
-    if (!target) return
+    // B side is B for the first finger only — while B is held, any additional
+    // touch (B side included) is A. The A side is always A.
+    const action: 'run' | 'jump' = onBSide && !bHeld ? 'run' : 'jump'
+    rightPointers.set(event.pointerId, action)
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    if (target === 'b') pressB(event.pointerId)
-    else pressA(event.pointerId)
+    syncButtons()
+    haptics.press()
   }
 
   function buttonsUp(event: PointerEvent) {
-    if (event.pointerId === bPointer) {
-      bPointer = null
-      bHeld = false
-      touch.release('run')
-      haptics.release()
-    } else if (event.pointerId === aPointer) {
-      aPointer = null
-      aHeld = false
-      touch.release('jump')
-      haptics.release()
-    }
+    if (!rightPointers.delete(event.pointerId)) return
+    syncButtons()
+    haptics.release()
   }
 
   // ── SELECT / RUN pills ──
   function pillDown(action: GamepadAction) {
     return (event: PointerEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
       ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
       touch.press(action)
       pressed = { ...pressed, [action]: true }
@@ -146,7 +146,11 @@
 </script>
 
 {#if touch.active}
-  <div class="touch-controls {touch.theme === 'nintendo' ? 'nintendo' : ''}" aria-hidden="true">
+  <div
+    class="touch-controls {touch.theme === 'nintendo' ? 'nintendo' : ''}"
+    aria-hidden="true"
+    oncontextmenu={(e) => e.preventDefault()}
+  >
     <!-- left half: dynamic analog stick -->
     <div
       class="zone left"
@@ -164,7 +168,7 @@
       {/if}
     </div>
 
-    <!-- right half: B on its left side, A on its right side -->
+    <!-- right half: virtual B on its left side, virtual A on its right side -->
     <div
       class="zone right"
       role="presentation"
@@ -172,11 +176,11 @@
       onpointerup={buttonsUp}
       onpointercancel={buttonsUp}
     >
-      <span class="face b {bHeld ? 'on' : ''}">B</span>
-      <span class="face a {aHeld ? 'on' : ''}">A</span>
+      <span class="side b {bHeld ? 'on' : ''}"><span class="face">B</span></span>
+      <span class="side a {aHeld ? 'on' : ''}"><span class="face">A</span></span>
     </div>
 
-    <!-- SELECT / RUN pills -->
+    <!-- SELECT / RUN pills, centered vertically in the bottom tile band -->
     <div class="pills">
       <div class="pill-group">
         <span
@@ -216,6 +220,7 @@
     pointer-events: none;
     user-select: none;
     -webkit-user-select: none;
+    -webkit-touch-callout: none;
     font-family: 'Courier New', monospace;
   }
 
@@ -232,7 +237,6 @@
     width: 50%;
     pointer-events: auto;
     touch-action: none;
-    overflow: hidden;
   }
 
   .zone.left { left: 0; }
@@ -245,6 +249,7 @@
     position: absolute;
     transform: translate(-50%, -50%);
     border-radius: 50%;
+    pointer-events: none;
   }
 
   .stick-base {
@@ -273,10 +278,26 @@
     opacity: 0.5;
   }
 
-  /* ── B / A buttons: each anchored in its half of the zone, B slightly
-     above A. The whole half is the hit region; these are the indicators. ── */
+  /* ── virtual B / A button halves ── */
+  .side {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    pointer-events: none;
+  }
+
+  .side.b { left: 0; }
+  .side.a { right: 0; }
+
+  /* B rides slightly above A */
+  .side.b .face { bottom: 26%; }
+  .side.a .face { bottom: 14%; }
+
   .face {
     position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -294,33 +315,26 @@
     transition: transform 70ms ease-out, opacity 70ms ease-out;
   }
 
-  .face.b {
-    left: 25%;
-    bottom: 26%;
-    transform: translate(-50%, 50%);
-  }
-
-  .face.a {
-    left: 75%;
-    bottom: 14%;
-    transform: translate(-50%, 50%);
-  }
-
-  .face.on {
+  .side.on .face {
     opacity: 1;
-    transform: translate(-50%, 50%) scale(0.92);
+    transform: translateX(-50%) scale(0.92);
     box-shadow:
       0 1px 4px rgba(0, 0, 0, 0.5),
       0 0 0 6px rgba(255, 255, 255, 0.12);
   }
 
-  /* ── SELECT / RUN pills, hugging the bottom edge ── */
+  /* ── SELECT / RUN pills: the ground tile band is the bottom 16 of the
+     game's 144 source rows (≈11%); center the pills vertically inside it.
+     In fullscreen landscape the FIT-scaled canvas fills the frame height,
+     so the band lines up with the bottom of the frame. ── */
   .pills {
     position: absolute;
     left: 50%;
-    bottom: max(1.5%, env(safe-area-inset-bottom));
+    bottom: 0;
+    height: 11.1%;
     transform: translateX(-50%);
     display: flex;
+    align-items: center;
     gap: min(4vmin, 22px);
     pointer-events: auto;
     touch-action: none;

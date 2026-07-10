@@ -40,7 +40,10 @@ export class MenuScene extends Phaser.Scene {
       gamepad.justPressed('start') ||
       gamepad.justPressed('jump') ||
       touch.justPressed('start') ||
-      touch.justPressed('jump')
+      touch.justPressed('jump') ||
+      // the dynamic touch scheme makes the FIRST right-half touch B (run),
+      // so a single tap must also start from the title screen
+      touch.justPressed('run')
     ) {
       this.scene.start('HUDScene')
       this.scene.start('GameScene')

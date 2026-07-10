@@ -2,58 +2,106 @@
   import type { GamepadAction } from '../lib/gamepad.svelte'
   import { touch } from '../lib/touch.svelte'
 
-  // TurboGrafx-16 pad layout: 8-way d-pad on the left, SELECT / RUN pills in
-  // the middle, round Ⅱ (run) and Ⅰ (jump) buttons on the right. Default skin
-  // is the TG-16 black-and-red; touch.theme === 'nintendo' (the launcher's
-  // Nintendo-red skin) swaps the buttons to NES cabinet gray.
+  // TurboGrafx-16-style dynamic touch scheme:
+  //  - left half: touch anywhere to plant a virtual analog stick, drag to steer
+  //  - right half: the first finger is B (run), the second finger is A (jump)
+  //    — each button materializes where the finger lands, with the idle hints
+  //    showing B riding slightly above A
+  //  - SELECT / RUN pills (fullscreen re-entry / start) sit bottom-center
+  // Default skin is TG-16 black-and-red; touch.theme === 'nintendo' (the
+  // launcher's Nintendo-red skin) swaps the buttons to NES cabinet gray.
 
-  let dpad = $state<HTMLDivElement>()
-  let dpadPointer: number | null = null
+  const STICK_RADIUS = 48
+  const STICK_DEAD = 10
+
+  let stick = $state({ active: false, ox: 0, oy: 0, x: 0, y: 0 })
+  let stickPointer: number | null = null
+
+  let bBtn = $state({ active: false, x: 0, y: 0 })
+  let aBtn = $state({ active: false, x: 0, y: 0 })
+  let bPointer: number | null = null
+  let aPointer: number | null = null
+
   let pressed = $state<Record<string, boolean>>({})
 
-  // d-pad direction from pointer position: 8-way, diagonals inside a 2:1 cone
-  function dpadUpdate(event: PointerEvent) {
-    if (!dpad) return
-    const rect = dpad.getBoundingClientRect()
-    const dx = event.clientX - (rect.left + rect.width / 2)
-    const dy = event.clientY - (rect.top + rect.height / 2)
+  function zonePoint(event: PointerEvent): { x: number; y: number } {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top }
+  }
+
+  // ── left half: dynamic analog stick ──
+  function stickApply(dx: number, dy: number) {
+    const mag = Math.hypot(dx, dy)
+    if (mag > STICK_RADIUS) {
+      dx *= STICK_RADIUS / mag
+      dy *= STICK_RADIUS / mag
+    }
+    stick.x = dx
+    stick.y = dy
+
+    // digital directions from the stick vector: 8-way, diagonals in a 2:1 cone
     const ax = Math.abs(dx)
     const ay = Math.abs(dy)
-    const dead = rect.width * 0.12
-
     const directions = new Set<GamepadAction>()
-    if (Math.max(ax, ay) >= dead) {
+    if (Math.max(ax, ay) >= STICK_DEAD) {
       if (ax > ay * 0.5) directions.add(dx < 0 ? 'left' : 'right')
       if (ay > ax * 0.5) directions.add(dy < 0 ? 'up' : 'down')
     }
     touch.setDirections(directions)
-    pressed = {
-      ...pressed,
-      up: directions.has('up'),
-      down: directions.has('down'),
-      left: directions.has('left'),
-      right: directions.has('right'),
+  }
+
+  function stickDown(event: PointerEvent) {
+    if (stickPointer !== null) return
+    stickPointer = event.pointerId
+    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+    const p = zonePoint(event)
+    stick = { active: true, ox: p.x, oy: p.y, x: 0, y: 0 }
+  }
+
+  function stickMove(event: PointerEvent) {
+    if (event.pointerId !== stickPointer) return
+    const p = zonePoint(event)
+    stickApply(p.x - stick.ox, p.y - stick.oy)
+  }
+
+  function stickUp(event: PointerEvent) {
+    if (event.pointerId !== stickPointer) return
+    stickPointer = null
+    stick.active = false
+    touch.setDirections(new Set())
+  }
+
+  // ── right half: first touch is B (run), second touch is A (jump) ──
+  function buttonsDown(event: PointerEvent) {
+    const p = zonePoint(event)
+    const zone = event.currentTarget as HTMLElement
+    if (bPointer === null) {
+      bPointer = event.pointerId
+      zone.setPointerCapture(event.pointerId)
+      bBtn = { active: true, x: p.x, y: p.y }
+      touch.press('run')
+    } else if (aPointer === null) {
+      aPointer = event.pointerId
+      zone.setPointerCapture(event.pointerId)
+      aBtn = { active: true, x: p.x, y: p.y }
+      touch.press('jump')
     }
   }
 
-  function dpadDown(event: PointerEvent) {
-    dpadPointer = event.pointerId
-    dpad?.setPointerCapture(event.pointerId)
-    dpadUpdate(event)
+  function buttonsUp(event: PointerEvent) {
+    if (event.pointerId === bPointer) {
+      bPointer = null
+      bBtn.active = false
+      touch.release('run')
+    } else if (event.pointerId === aPointer) {
+      aPointer = null
+      aBtn.active = false
+      touch.release('jump')
+    }
   }
 
-  function dpadMove(event: PointerEvent) {
-    if (event.pointerId === dpadPointer) dpadUpdate(event)
-  }
-
-  function dpadUp(event: PointerEvent) {
-    if (event.pointerId !== dpadPointer) return
-    dpadPointer = null
-    touch.setDirections(new Set())
-    pressed = { ...pressed, up: false, down: false, left: false, right: false }
-  }
-
-  function buttonDown(action: GamepadAction) {
+  // ── SELECT / RUN pills ──
+  function pillDown(action: GamepadAction) {
     return (event: PointerEvent) => {
       ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
       touch.press(action)
@@ -61,7 +109,7 @@
     }
   }
 
-  function buttonUp(action: GamepadAction) {
+  function pillUp(action: GamepadAction) {
     return () => {
       touch.release(action)
       pressed = { ...pressed, [action]: false }
@@ -71,22 +119,44 @@
 
 {#if touch.active}
   <div class="touch-controls {touch.theme === 'nintendo' ? 'nintendo' : ''}" aria-hidden="true">
-    <!-- d-pad -->
+    <!-- left half: dynamic analog stick -->
     <div
-      class="dpad"
+      class="zone left"
       role="presentation"
-      bind:this={dpad}
-      onpointerdown={dpadDown}
-      onpointermove={dpadMove}
-      onpointerup={dpadUp}
-      onpointercancel={dpadUp}
+      onpointerdown={stickDown}
+      onpointermove={stickMove}
+      onpointerup={stickUp}
+      onpointercancel={stickUp}
     >
-      <span class="arm v"></span>
-      <span class="arm h"></span>
-      <span class="cap up {pressed.up ? 'on' : ''}"></span>
-      <span class="cap down {pressed.down ? 'on' : ''}"></span>
-      <span class="cap left {pressed.left ? 'on' : ''}"></span>
-      <span class="cap right {pressed.right ? 'on' : ''}"></span>
+      {#if stick.active}
+        <span class="stick-base" style={`left:${stick.ox}px;top:${stick.oy}px`}></span>
+        <span class="stick-knob" style={`left:${stick.ox + stick.x}px;top:${stick.oy + stick.y}px`}></span>
+      {:else}
+        <span class="hint stick-hint"></span>
+      {/if}
+    </div>
+
+    <!-- right half: dynamic B (run) above A (jump) -->
+    <div
+      class="zone right"
+      role="presentation"
+      onpointerdown={buttonsDown}
+      onpointerup={buttonsUp}
+      onpointercancel={buttonsUp}
+    >
+      {#if bBtn.active}
+        <span class="face on" style={`left:${bBtn.x}px;top:${bBtn.y}px`}>B</span>
+      {:else}
+        <span class="face hint b-hint">B</span>
+      {/if}
+      {#if aBtn.active}
+        <span class="face on" style={`left:${aBtn.x}px;top:${aBtn.y}px`}>A</span>
+      {:else if bBtn.active}
+        <!-- second-finger affordance: A ghost slightly below the planted B -->
+        <span class="face hint" style={`left:${bBtn.x + 34}px;top:${bBtn.y + 64}px`}>A</span>
+      {:else}
+        <span class="face hint a-hint">A</span>
+      {/if}
     </div>
 
     <!-- SELECT / RUN pills -->
@@ -95,9 +165,9 @@
         <span
           role="presentation"
           class="pill {pressed.fullscreen ? 'on' : ''}"
-          onpointerdown={buttonDown('fullscreen')}
-          onpointerup={buttonUp('fullscreen')}
-          onpointercancel={buttonUp('fullscreen')}
+          onpointerdown={pillDown('fullscreen')}
+          onpointerup={pillUp('fullscreen')}
+          onpointercancel={pillUp('fullscreen')}
         ></span>
         <span class="pill-label">SELECT</span>
       </div>
@@ -105,35 +175,11 @@
         <span
           role="presentation"
           class="pill {pressed.start ? 'on' : ''}"
-          onpointerdown={buttonDown('start')}
-          onpointerup={buttonUp('start')}
-          onpointercancel={buttonUp('start')}
+          onpointerdown={pillDown('start')}
+          onpointerup={pillUp('start')}
+          onpointercancel={pillUp('start')}
         ></span>
         <span class="pill-label">RUN</span>
-      </div>
-    </div>
-
-    <!-- Ⅱ (run) and Ⅰ (jump) buttons -->
-    <div class="face-buttons">
-      <div class="face-group">
-        <span
-          role="presentation"
-          class="face {pressed.run ? 'on' : ''}"
-          onpointerdown={buttonDown('run')}
-          onpointerup={buttonUp('run')}
-          onpointercancel={buttonUp('run')}
-        ></span>
-        <span class="face-label">Ⅱ</span>
-      </div>
-      <div class="face-group">
-        <span
-          role="presentation"
-          class="face {pressed.jump ? 'on' : ''}"
-          onpointerdown={buttonDown('jump')}
-          onpointerup={buttonUp('jump')}
-          onpointercancel={buttonUp('jump')}
-        ></span>
-        <span class="face-label">Ⅰ</span>
       </div>
     </div>
   </div>
@@ -144,7 +190,6 @@
     /* TurboGrafx-16 skin */
     --pad-body: rgba(24, 24, 28, 0.78);
     --pad-edge: rgba(120, 120, 130, 0.55);
-    --pad-cross: rgba(46, 46, 52, 0.9);
     --btn-face: radial-gradient(circle at 35% 30%, #f4535e 0%, #d22730 40%, #7d1017 100%);
     --btn-edge: rgba(255, 120, 130, 0.5);
     --label: rgba(235, 235, 240, 0.85);
@@ -163,49 +208,96 @@
     --btn-edge: rgba(213, 213, 216, 0.6);
   }
 
-  .touch-controls > div {
+  .zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
     pointer-events: auto;
     touch-action: none;
+    overflow: hidden;
   }
 
-  /* ── d-pad (left) ── */
-  .dpad {
+  .zone.left { left: 0; }
+  .zone.right { right: 0; }
+
+  /* ── dynamic stick ── */
+  .stick-base,
+  .stick-knob,
+  .stick-hint {
     position: absolute;
-    left: max(4%, env(safe-area-inset-left));
-    bottom: 6%;
-    width: min(34vmin, 168px);
-    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
     border-radius: 50%;
+  }
+
+  .stick-base {
+    width: 96px;
+    height: 96px;
     background: var(--pad-body);
     border: 2px solid var(--pad-edge);
   }
 
-  .dpad .arm {
-    position: absolute;
-    background: var(--pad-cross);
-    border-radius: 6px;
-    box-shadow: inset 0 0 0 1px rgba(150, 150, 160, 0.35);
+  .stick-knob {
+    width: 44px;
+    height: 44px;
+    background: var(--btn-face);
+    border: 2px solid var(--btn-edge);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
   }
 
-  .dpad .arm.v { left: 36%; top: 10%; width: 28%; height: 80%; }
-  .dpad .arm.h { top: 36%; left: 10%; height: 28%; width: 80%; }
-
-  .dpad .cap {
-    position: absolute;
-    width: 28%;
-    height: 28%;
-    border-radius: 6px;
-    opacity: 0;
-    background: rgba(255, 255, 255, 0.28);
+  .stick-hint {
+    left: 22%;
+    bottom: 12%;
+    top: auto;
+    transform: translate(-50%, 50%);
+    width: 96px;
+    height: 96px;
+    border: 2px dashed var(--pad-edge);
+    opacity: 0.5;
   }
 
-  .dpad .cap.on { opacity: 1; }
-  .dpad .cap.up { left: 36%; top: 10%; }
-  .dpad .cap.down { left: 36%; bottom: 10%; }
-  .dpad .cap.left { left: 10%; top: 36%; }
-  .dpad .cap.right { right: 10%; top: 36%; }
+  /* ── dynamic B / A buttons ── */
+  .face {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: min(16vmin, 72px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--btn-face);
+    border: 2px solid var(--btn-edge);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+    color: var(--label);
+    font-weight: bold;
+    font-size: min(4vmin, 18px);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
 
-  /* ── SELECT / RUN pills (center) ── */
+  .face.hint {
+    opacity: 0.4;
+    box-shadow: none;
+  }
+
+  /* idle hints: B rides slightly above A */
+  .face.b-hint {
+    right: 24%;
+    bottom: 30%;
+    left: auto;
+    top: auto;
+    transform: translate(50%, 50%);
+  }
+
+  .face.a-hint {
+    right: 10%;
+    bottom: 12%;
+    left: auto;
+    top: auto;
+    transform: translate(50%, 50%);
+  }
+
+  /* ── SELECT / RUN pills ── */
   .pills {
     position: absolute;
     left: 50%;
@@ -213,6 +305,8 @@
     transform: translateX(-50%);
     display: flex;
     gap: min(4vmin, 22px);
+    pointer-events: auto;
+    touch-action: none;
   }
 
   .pill-group {
@@ -236,47 +330,6 @@
   .pill-label {
     font-size: min(2.4vmin, 11px);
     letter-spacing: 0.08em;
-    color: var(--label);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-  }
-
-  /* ── Ⅱ / Ⅰ buttons (right) ── */
-  .face-buttons {
-    position: absolute;
-    right: max(4%, env(safe-area-inset-right));
-    bottom: 8%;
-    display: flex;
-    gap: min(5vmin, 26px);
-    align-items: flex-end;
-  }
-
-  .face-group {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .face {
-    display: block;
-    width: min(16vmin, 78px);
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: var(--btn-face);
-    border: 2px solid var(--btn-edge);
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
-    opacity: 0.88;
-  }
-
-  .face.on {
-    opacity: 1;
-    transform: translateY(2px);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
-  }
-
-  .face-label {
-    font-size: min(3.4vmin, 16px);
-    font-weight: bold;
     color: var(--label);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   }

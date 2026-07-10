@@ -58,14 +58,6 @@
 
   <!-- overlays live inside the frame so they stay visible in fullscreen -->
   <TouchControls />
-  <div class="game-ui">
-    <button
-      class="fullscreen-btn"
-      onclick={toggleFullscreen}
-      title="Fullscreen (F)"
-      aria-label="Toggle fullscreen"
-    >⛶</button>
-  </div>
 </div>
 
 <style>
@@ -88,26 +80,4 @@
     image-rendering: pixelated;
   }
 
-  .game-ui {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .fullscreen-btn {
-    background: rgba(0, 0, 0, 0.6);
-    color: #f8f8f8;
-    border: none;
-    border-radius: 6px;
-    font-size: 16px;
-    padding: 4px 8px;
-    cursor: pointer;
-  }
-
-  .fullscreen-btn:hover {
-    background: rgba(0, 0, 0, 0.85);
-  }
 </style>

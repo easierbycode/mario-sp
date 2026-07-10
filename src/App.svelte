@@ -27,22 +27,26 @@
     gamepad.onaction = onaction
     touch.onaction = onaction
 
-    // launch in fullscreen: browsers only honor requestFullscreen from a user
-    // gesture, so the first tap/click promotes the frame (the ⛶ button and
-    // F key keep their own toggles)
-    const onFirstPointer = (event: PointerEvent) => {
-      window.removeEventListener('pointerdown', onFirstPointer, true)
-      if ((event.target as Element | null)?.closest?.('.fullscreen-btn')) return
-      gameCanvas?.enterFullscreen()
+    // start in fullscreen: browsers only honor requestFullscreen from a user
+    // gesture, so keep promoting the frame on taps/clicks until one lands
+    // (the F key keeps its toggle for keyboard players)
+    const onPointer = () => gameCanvas?.enterFullscreen()
+    const onFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        window.removeEventListener('pointerdown', onPointer, true)
+        document.removeEventListener('fullscreenchange', onFullscreenChange)
+      }
     }
-    window.addEventListener('pointerdown', onFirstPointer, true)
+    window.addEventListener('pointerdown', onPointer, true)
+    document.addEventListener('fullscreenchange', onFullscreenChange)
 
     return () => {
       cleanupGamepad()
       cleanupTouch()
       gamepad.onaction = null
       touch.onaction = null
-      window.removeEventListener('pointerdown', onFirstPointer, true)
+      window.removeEventListener('pointerdown', onPointer, true)
+      document.removeEventListener('fullscreenchange', onFullscreenChange)
     }
   })
 

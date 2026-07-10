@@ -121,8 +121,11 @@
     const p = zonePoint(event)
     const onBSide = p.x < p.w / 2
 
-    // top half of the B side latches the run lock on/off
-    if (onBSide && p.y < p.h / 2) {
+    // top half of the B side latches the run lock on/off — but only while no
+    // finger is holding B, so a hold-B-plus-tap that drifts high still jumps
+    // instead of stealing the touch for the latch
+    const fingerRun = [...rightPointers.values()].includes('run')
+    if (onBSide && p.y < p.h / 2 && !fingerRun) {
       rightPointers.set(event.pointerId, 'lock')
       ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
       runLocked = !runLocked

@@ -6,6 +6,8 @@
 // by default FACEBTN_LEFT runs (keyboard C) and FACEBTN_BOTTOM jumps
 // (keyboard SPACE).
 
+import { loadCodemonkeyConfig } from './codemonkey-config'
+
 export type GamepadAction =
   | 'up'
   | 'down'
@@ -216,11 +218,7 @@ class GamepadState {
 
   async #loadConfig(): Promise<void> {
     try {
-      // BASE_URL-relative so it works under a GitHub Pages subpath
-      const response = await fetch(`${import.meta.env.BASE_URL}codemonkey.json`)
-      if (!response.ok) return
-
-      const config = await response.json()
+      const config = await loadCodemonkeyConfig()
       const buttons = config?.gamepad?.buttons
       if (!buttons) return
 

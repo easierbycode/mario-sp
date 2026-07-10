@@ -2,8 +2,8 @@
   import Phaser from 'phaser'
   import { Game } from 'svelte-phaser'
   import { GAME_HEIGHT, GAME_WIDTH, physics, scenes } from '../game/config'
-  import { gamepad } from '../lib/gamepad.svelte'
   import GamepadPoller from './GamepadPoller.svelte'
+  import TouchControls from './TouchControls.svelte'
 
   let frame = $state<HTMLDivElement>()
   let phaser = $state<Phaser.Game>()
@@ -17,11 +17,16 @@
     if (document.fullscreenElement) {
       document.exitFullscreen()
     } else {
-      // may be rejected without a user gesture (e.g. from a gamepad button)
-      frame?.requestFullscreen()?.catch((error) => {
-        console.log('Fullscreen request rejected:', error)
-      })
+      enterFullscreen()
     }
+  }
+
+  export function enterFullscreen(): void {
+    if (document.fullscreenElement) return
+    // may be rejected without a user gesture (e.g. from a gamepad button)
+    frame?.requestFullscreen()?.catch((error) => {
+      console.log('Fullscreen request rejected:', error)
+    })
   }
 </script>
 
@@ -51,13 +56,9 @@
     </Game>
   {/if}
 
-  <!-- overlay UI lives inside the frame so it stays visible in fullscreen -->
+  <!-- overlays live inside the frame so they stay visible in fullscreen -->
+  <TouchControls />
   <div class="game-ui">
-    {#if gamepad.connected}
-      <div class="gamepad-chip" title={gamepad.id}>
-        🎮 {gamepad.glyphFor('run')} Run · {gamepad.glyphFor('jump')} Jump
-      </div>
-    {/if}
     <button
       class="fullscreen-btn"
       onclick={toggleFullscreen}
@@ -94,14 +95,6 @@
     display: flex;
     gap: 8px;
     align-items: center;
-  }
-
-  .gamepad-chip {
-    background: rgba(0, 0, 0, 0.6);
-    color: #88e453;
-    font-size: 13px;
-    padding: 4px 10px;
-    border-radius: 999px;
   }
 
   .fullscreen-btn {

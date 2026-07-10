@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { gamepad } from '../../lib/gamepad.svelte'
+import { touch } from '../../lib/touch.svelte'
 
 export class MenuScene extends Phaser.Scene {
   private startKey: Phaser.Input.Keyboard.Key
@@ -37,7 +38,9 @@ export class MenuScene extends Phaser.Scene {
     if (
       this.startKey.isDown ||
       gamepad.justPressed('start') ||
-      gamepad.justPressed('jump')
+      gamepad.justPressed('jump') ||
+      touch.justPressed('start') ||
+      touch.justPressed('jump')
     ) {
       this.scene.start('HUDScene')
       this.scene.start('GameScene')

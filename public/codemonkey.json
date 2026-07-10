@@ -1,4 +1,5 @@
 {
+  "touchControls": { "default": true },
   "gamepad": {
     "buttons": {
       "FACEBTN_LEFT": { "action": "run", "key": "C" },

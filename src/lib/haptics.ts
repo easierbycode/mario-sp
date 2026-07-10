@@ -34,4 +34,12 @@ export const haptics = {
   step(): void {
     pulse(5)
   },
+  /** Button lock engaged — two detents, unmistakably "latched". */
+  lock(): void {
+    pulse([10, 40, 10])
+  },
+  /** Button lock released — a single light tick. */
+  unlock(): void {
+    pulse(6)
+  },
 }

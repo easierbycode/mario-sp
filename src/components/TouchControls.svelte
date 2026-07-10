@@ -7,12 +7,14 @@
   //  - left half of the screen: touch anywhere to plant a virtual analog
   //    stick, drag to steer
   //  - right half: its left half is a virtual B button (run), its right half
-  //    is a virtual A button (jump). A second touch while B is already held is
-  //    ALWAYS A — even on the B side — so holding B with the thumb tip and
-  //    tapping next to it jumps while running.
+  //    is a virtual A button (jump). Any touch while B is already held is A —
+  //    even on the B side — and the A button materializes UNDER that finger,
+  //    so pressing the thumb down in two places runs and jumps at once.
+  //  - B lock: tapping the TOP half of the B side latches run on/off, freeing
+  //    the thumb entirely — while locked, every B-side touch is A.
   //  - SELECT / RUN pills sit centered vertically in the game's bottom tile
   //    band (the ground strip is 16 of 144 source pixels ≈ 11% of the height)
-  // Presses and releases land short haptic ticks (see lib/haptics.ts).
+  // Presses, releases, and the lock latch land haptic ticks (lib/haptics.ts).
   // Default skin is TG-16 black-and-red; touch.theme === 'nintendo' (the
   // launcher's Nintendo-red skin) swaps the buttons to NES cabinet gray.
 
@@ -23,16 +25,24 @@
   let stickPointer: number | null = null
   let stickDirections = ''
 
-  // every active right-side finger, in the order it landed: pointerId → action
-  const rightPointers = new Map<number, 'run' | 'jump'>()
+  // every active right-side finger and what it landed as: pointerId → role
+  const rightPointers = new Map<number, 'run' | 'jump' | 'lock'>()
+  // live A touches, so the A button can materialize under each finger
+  let aTouches = $state<{ id: number; x: number; y: number }[]>([])
+  let runLocked = $state(false)
   let bHeld = $state(false)
   let aHeld = $state(false)
 
   let pressed = $state<Record<string, boolean>>({})
 
-  function zonePoint(event: PointerEvent): { x: number; y: number; w: number } {
+  function zonePoint(event: PointerEvent): { x: number; y: number; w: number; h: number } {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top, w: rect.width }
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      w: rect.width,
+      h: rect.height,
+    }
   }
 
   // ── left half: dynamic analog stick ──
@@ -87,13 +97,13 @@
   }
 
   // ── right half: virtual B (left side, run) and A (right side, jump) ──
-  // Re-derive held state from the live finger map, pressing/releasing the
-  // shared touch state only on 0↔1 transitions so overlapping fingers on the
-  // same button can't drop it early.
+  // Re-derive held state from the live finger map + the run lock, pressing/
+  // releasing the shared touch state only on 0↔1 transitions so overlapping
+  // fingers on the same button can't drop it early.
   function syncButtons() {
-    const actions = [...rightPointers.values()]
-    const run = actions.includes('run')
-    const jump = actions.includes('jump')
+    const roles = [...rightPointers.values()]
+    const run = runLocked || roles.includes('run')
+    const jump = roles.includes('jump')
     if (run !== bHeld) {
       bHeld = run
       if (run) touch.press('run')
@@ -110,19 +120,39 @@
     event.preventDefault()
     const p = zonePoint(event)
     const onBSide = p.x < p.w / 2
-    // B side is B for the first finger only — while B is held, any additional
-    // touch (B side included) is A. The A side is always A.
-    const action: 'run' | 'jump' = onBSide && !bHeld ? 'run' : 'jump'
-    rightPointers.set(event.pointerId, action)
+
+    // top half of the B side latches the run lock on/off
+    if (onBSide && p.y < p.h / 2) {
+      rightPointers.set(event.pointerId, 'lock')
+      ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+      runLocked = !runLocked
+      syncButtons()
+      if (runLocked) haptics.lock()
+      else haptics.unlock()
+      return
+    }
+
+    // B side is B for the first finger only — while B is held (finger or
+    // lock), any additional touch is A, and the A button materializes right
+    // under it. The A side is always A.
+    const role: 'run' | 'jump' = onBSide && !bHeld ? 'run' : 'jump'
+    rightPointers.set(event.pointerId, role)
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+    if (role === 'jump') {
+      aTouches = [...aTouches, { id: event.pointerId, x: p.x, y: p.y }]
+    }
     syncButtons()
     haptics.press()
   }
 
   function buttonsUp(event: PointerEvent) {
+    const role = rightPointers.get(event.pointerId)
     if (!rightPointers.delete(event.pointerId)) return
+    if (role === 'jump') {
+      aTouches = aTouches.filter((t) => t.id !== event.pointerId)
+    }
     syncButtons()
-    haptics.release()
+    if (role !== 'lock') haptics.release()
   }
 
   // ── SELECT / RUN pills ──
@@ -168,7 +198,8 @@
       {/if}
     </div>
 
-    <!-- right half: virtual B on its left side, virtual A on its right side -->
+    <!-- right half: virtual B on its left side, virtual A on its right side.
+         A also materializes under any extra finger while B is held/locked. -->
     <div
       class="zone right"
       role="presentation"
@@ -176,8 +207,14 @@
       onpointerup={buttonsUp}
       onpointercancel={buttonsUp}
     >
-      <span class="side b {bHeld ? 'on' : ''}"><span class="face">B</span></span>
+      <span class="side b {bHeld ? 'on' : ''} {runLocked ? 'locked' : ''}">
+        <span class="lock-chip">{runLocked ? '🔒 B LOCKED' : 'LOCK B'}</span>
+        <span class="face">B</span>
+      </span>
       <span class="side a {aHeld ? 'on' : ''}"><span class="face">A</span></span>
+      {#each aTouches as t (t.id)}
+        <span class="face dyn" style={`left:${t.x}px;top:${t.y}px`}>A</span>
+      {/each}
     </div>
 
     <!-- SELECT / RUN pills, centered vertically in the bottom tile band -->
@@ -318,6 +355,48 @@
   .side.on .face {
     opacity: 1;
     transform: translateX(-50%) scale(0.92);
+    box-shadow:
+      0 1px 4px rgba(0, 0, 0, 0.5),
+      0 0 0 6px rgba(255, 255, 255, 0.12);
+  }
+
+  /* the A button materializing under an extra finger */
+  .face.dyn {
+    left: auto;
+    transform: translate(-50%, -50%);
+    opacity: 1;
+    box-shadow:
+      0 1px 4px rgba(0, 0, 0, 0.5),
+      0 0 0 6px rgba(255, 255, 255, 0.12);
+  }
+
+  /* run-lock latch: tap target is the whole top half of the B side; the chip
+     labels it and reads out the state */
+  .lock-chip {
+    position: absolute;
+    top: 12%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--pad-body);
+    border: 2px solid var(--pad-edge);
+    color: var(--label);
+    font-size: min(2.6vmin, 12px);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    opacity: 0.55;
+    transition: opacity 90ms ease-out;
+  }
+
+  .side.locked .lock-chip {
+    opacity: 1;
+    border-color: var(--btn-edge);
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+  }
+
+  .side.locked .face {
+    opacity: 1;
     box-shadow:
       0 1px 4px rgba(0, 0, 0, 0.5),
       0 0 0 6px rgba(255, 255, 255, 0.12);

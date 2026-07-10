@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { gamepad } from '../../lib/gamepad.svelte'
+import { touch } from '../../lib/touch.svelte'
 import type { ISpriteConstructor } from '../interfaces/interfaces'
 
 // Game Boy (Super Mario Land) profile
@@ -39,9 +40,9 @@ export class Mario extends Phaser.GameObjects.Sprite {
     return this.isVulnerable
   }
 
-  /** Held state for an action, merged from keyboard and gamepad. */
+  /** Held state for an action, merged from keyboard, gamepad, and touch. */
   public actionIsDown(action: 'up' | 'left' | 'right' | 'down' | 'jump' | 'run'): boolean {
-    return this.keys.get(action)?.isDown || gamepad.isDown(action)
+    return this.keys.get(action)?.isDown || gamepad.isDown(action) || touch.isDown(action)
   }
 
   constructor(aParams: ISpriteConstructor) {

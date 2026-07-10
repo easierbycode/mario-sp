@@ -36,6 +36,12 @@ export class Mario extends Phaser.GameObjects.Sprite {
   // input
   private keys: Map<string, Phaser.Input.Keyboard.Key>
 
+  // levels with double-size tiles (E1's 16px vs the GB levels' 8px) set
+  // registry physicsScale=2: scaling every velocity by k alongside gravity ×k
+  // doubles all distances with identical timing, so tile-relative jumps and
+  // gaps play exactly like the original implementation
+  private physicsScale: number = 1
+
   public getVulnerable(): boolean {
     return this.isVulnerable
   }
@@ -76,10 +82,11 @@ export class Mario extends Phaser.GameObjects.Sprite {
     ])
 
     // physics
+    this.physicsScale = this.currentScene.registry.get('physicsScale') ?? 1
     this.currentScene.physics.world.enable(this)
     this.adjustPhysicBodyToSmallSize()
-    this.body.maxVelocity.x = WALK_MAX_VELOCITY
-    this.body.maxVelocity.y = 300
+    this.body.maxVelocity.x = WALK_MAX_VELOCITY * this.physicsScale
+    this.body.maxVelocity.y = 300 * this.physicsScale
   }
 
   private addKey(key: string): Phaser.Input.Keyboard.Key {
@@ -133,10 +140,12 @@ export class Mario extends Phaser.GameObjects.Sprite {
   }
 
   private handleGbInput() {
+    const s = this.physicsScale
     // holding run (B on the Game Boy) raises the speed cap, as in the original
     const running = this.actionIsDown('run')
-    const acceleration = running ? RUN_ACCELERATION : WALK_ACCELERATION
-    this.body.maxVelocity.x = running ? RUN_MAX_VELOCITY : WALK_MAX_VELOCITY
+    const acceleration = (running ? RUN_ACCELERATION : WALK_ACCELERATION) * s
+    this.body.maxVelocity.x =
+      (running ? RUN_MAX_VELOCITY : WALK_MAX_VELOCITY) * s
 
     // handle movements to left and right
     if (this.actionIsDown('right')) {
@@ -152,12 +161,13 @@ export class Mario extends Phaser.GameObjects.Sprite {
 
     // handle jumping
     if (this.actionIsDown('jump') && !this.isJumping) {
-      this.body.setVelocityY(JUMP_VELOCITY)
+      this.body.setVelocityY(JUMP_VELOCITY * s)
       this.isJumping = true
     }
   }
 
   private handleSma4Input() {
+    const s = this.physicsScale
     // scale the per-frame constants by the actual frame time
     const timeScale = this.currentScene.game.loop.delta / (1000 / 60)
 
@@ -166,9 +176,9 @@ export class Mario extends Phaser.GameObjects.Sprite {
 
     // running only raises the cap while steering
     if ((left || right) && this.actionIsDown('run')) {
-      this.body.maxVelocity.x = SMA4.RUN_MAX_VELOCITY
+      this.body.maxVelocity.x = SMA4.RUN_MAX_VELOCITY * s
     } else {
-      this.body.maxVelocity.x = SMA4.WALK_MAX_VELOCITY
+      this.body.maxVelocity.x = SMA4.WALK_MAX_VELOCITY * s
     }
 
     if (
@@ -185,7 +195,7 @@ export class Mario extends Phaser.GameObjects.Sprite {
     // steering and bleeds off (faster when skidding) when released
     if (right) {
       if (this.acceleration < this.body.maxVelocity.x) {
-        this.acceleration += SMA4.ACCELERATION * timeScale
+        this.acceleration += SMA4.ACCELERATION * timeScale * s
         if (this.acceleration > this.body.maxVelocity.x)
           this.acceleration = this.body.maxVelocity.x
       }
@@ -194,7 +204,7 @@ export class Mario extends Phaser.GameObjects.Sprite {
       this.setFlipX(false)
     } else if (left) {
       if (this.acceleration < this.body.maxVelocity.x) {
-        this.acceleration += SMA4.ACCELERATION * timeScale
+        this.acceleration += SMA4.ACCELERATION * timeScale * s
         if (this.acceleration > this.body.maxVelocity.x)
           this.acceleration = this.body.maxVelocity.x
       }
@@ -203,17 +213,17 @@ export class Mario extends Phaser.GameObjects.Sprite {
       this.setFlipX(true)
     } else {
       if (this.acceleration !== 0) {
-        this.acceleration -= SMA4.DECELERATION * timeScale
+        this.acceleration -= SMA4.DECELERATION * timeScale * s
         if (this.acceleration < 0) this.acceleration = 0
       }
 
-      let decel = SMA4.DECELERATION * timeScale
+      let decel = SMA4.DECELERATION * timeScale * s
 
       if (
         (this.body.velocity.x < 0 && this.body.acceleration.x > 0) ||
         (this.body.velocity.x > 0 && this.body.acceleration.x < 0)
       ) {
-        decel = SMA4.SKID_DECELERATION * timeScale
+        decel = SMA4.SKID_DECELERATION * timeScale * s
       }
 
       if (this.flipX) {
@@ -232,15 +242,15 @@ export class Mario extends Phaser.GameObjects.Sprite {
     // handle jumping — faster running means a higher jump, as in SMB3
     if (this.actionIsDown('jump') && !this.isJumping) {
       let jumpVelocity = -206.25
-      if (Math.abs(velocity) > 180) {
+      if (Math.abs(velocity) > 180 * s) {
         jumpVelocity = -236.25
-      } else if (Math.abs(velocity) > 120) {
+      } else if (Math.abs(velocity) > 120 * s) {
         jumpVelocity = -221.25
-      } else if (Math.abs(velocity) > 60) {
+      } else if (Math.abs(velocity) > 60 * s) {
         jumpVelocity = -213.75
       }
 
-      this.body.setVelocityY(jumpVelocity)
+      this.body.setVelocityY(jumpVelocity * s)
       this.isJumping = true
     }
   }

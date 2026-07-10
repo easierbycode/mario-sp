@@ -62,5 +62,7 @@ export class MenuScene extends Phaser.Scene {
     this.registry.set('spawn', { x: 12, y: 44, dir: 'down' })
     this.registry.set('marioSize', 'small')
     this.registry.set('physics', 'gb')
+    // GB levels use 8px tiles — E1 (16px tiles) raises this to 2
+    this.registry.set('physicsScale', 1)
   }
 }

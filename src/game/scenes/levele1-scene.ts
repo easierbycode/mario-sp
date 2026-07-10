@@ -22,6 +22,21 @@ const defaultAnimationFrames: Record<string, any> = {
   },
 }
 
+// E1's maps use 16px tiles — double the GB levels' 8px. Scaling gravity and
+// every velocity by the same factor doubles all distances with identical
+// timing, so jumps and gaps play exactly like the original implementation in
+// tile units. Mario reads this back from the physicsScale registry key.
+const PHYSICS_SCALE = 2
+const BASE_GRAVITY = 475 // matches physics.arcade.gravity.y in game/config.ts
+
+// Room A/B's question block (tile id 225 + firstgid 1) — hitting it from
+// below swaps it for a plain gold block and sends a vine up
+const QUESTION_BLOCK_GID = 226
+const USED_BLOCK_GID = 209
+const VINE_TOP_FRAME = 395
+const VINE_FRAME = 438
+const CLIMB_VELOCITY = -80
+
 export class LevelE1Scene extends Phaser.Scene {
   // tilemap
   private map: Phaser.Tilemaps.Tilemap
@@ -32,6 +47,7 @@ export class LevelE1Scene extends Phaser.Scene {
   private groundGroup: Phaser.Physics.Arcade.StaticGroup
   private player: Mario
   private portals: Phaser.GameObjects.Group
+  private vines: Phaser.Physics.Arcade.StaticGroup
   private currentLevel: string
 
   constructor() {
@@ -46,11 +62,16 @@ export class LevelE1Scene extends Phaser.Scene {
     }
     this.currentLevel = this.registry.get('level')
 
-    // this level was designed around the mario repo's GBA SMB3 physics
+    // this level was designed around the mario repo's GBA SMB3 physics,
+    // at double tile size — see PHYSICS_SCALE
     this.registry.set('physics', 'sma4')
+    this.registry.set('physicsScale', PHYSICS_SCALE)
   }
 
   create(): void {
+    // set (not multiply — the world survives scene restarts) the scaled gravity
+    this.physics.world.gravity.y = BASE_GRAVITY * PHYSICS_SCALE
+
     // *****************************************************************
     // SETUP TILEMAP
     // *****************************************************************
@@ -121,6 +142,7 @@ export class LevelE1Scene extends Phaser.Scene {
     this.portals = this.add.group({ runChildUpdate: true })
     this.collectibles = this.add.group({ runChildUpdate: true })
     this.enemies = this.add.group({ runChildUpdate: true })
+    this.vines = this.physics.add.staticGroup()
 
     this.loadObjectsFromTilemap()
 
@@ -128,7 +150,10 @@ export class LevelE1Scene extends Phaser.Scene {
     // COLLIDERS
     // *****************************************************************
     this.physics.add.collider(this.player, this.groundGroup)
-    this.physics.add.collider(this.player, fgLayer)
+    this.physics.add.collider(this.player, fgLayer, (player, tile) =>
+      this.handleTileHit(player as Mario, tile as unknown as Phaser.Tilemaps.Tile)
+    )
+
     this.physics.add.collider(
       this.enemies,
       fgLayer,
@@ -175,6 +200,16 @@ export class LevelE1Scene extends Phaser.Scene {
   update(): void {
     if (this.player) {
       this.player.update()
+
+      // vines are climbable: hold up while touching one. Runs AFTER Mario's
+      // input handling — the SMA4 profile zeroes velocityY while grounded,
+      // which would cancel the climb off a block top otherwise.
+      if (
+        this.player.actionIsDown('up') &&
+        this.physics.overlap(this.player, this.vines)
+      ) {
+        this.player.body.setVelocityY(CLIMB_VELOCITY)
+      }
 
       // WORLD WRAP
       if (this.currentLevel === 'levele1RoomKL') {
@@ -298,6 +333,49 @@ export class LevelE1Scene extends Phaser.Scene {
         this.addMapImage(object)
       }
     }, this)
+  }
+
+  // question block (room A/B): head-bonk from below spends the block and
+  // grows a vine up toward the room's exit
+  private handleTileHit(player: Mario, tile: Phaser.Tilemaps.Tile): void {
+    if (tile.index !== QUESTION_BLOCK_GID) return
+    if (!player.body.blocked.up) return
+
+    tile.index = USED_BLOCK_GID
+    this.growVine(tile)
+  }
+
+  private growVine(tile: Phaser.Tilemaps.Tile): void {
+    const x = tile.getCenterX()
+    const blockTop = tile.getTop()
+    // grow one segment at a time, stopping under the first solid tile above
+    // (room A/B has a shelf between the block and the ceiling)
+    let topRow = 0
+    for (let row = tile.y - 1; row >= 0; row--) {
+      const above = this.map.getTileAt(tile.x, row)
+      if (above && above.collides) {
+        topRow = row + 1
+        break
+      }
+    }
+    const segments = Math.max(1, tile.y - topRow)
+    let grown = 0
+
+    this.time.addEvent({
+      delay: 120,
+      repeat: segments - 1,
+      callback: () => {
+        const frame = grown === segments - 1 ? VINE_TOP_FRAME : VINE_FRAME
+        const segment = this.vines.create(
+          x,
+          blockTop - 8 - grown * 16,
+          'sma4',
+          frame
+        ) as Phaser.Types.Physics.Arcade.SpriteWithStaticBody
+        segment.setDepth(Constants.DEPTH.foregroundSecondary)
+        grown++
+      },
+    })
   }
 
   private formatProperties(object: any): void {

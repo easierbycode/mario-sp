@@ -70,6 +70,14 @@ class TouchState {
   /** Snapshot held actions and fire onaction on fresh presses. Once per step. */
   poll(): void {
     this.#fresh.clear()
+    // disabling mid-hold unmounts the overlay before its pointer-up handlers
+    // can fire — drop any stale held actions so input doesn't stick
+    if (!this.active) {
+      this.#held.clear()
+      this.#pending.clear()
+      this.#polled = new Set()
+      return
+    }
     const snapshot = new Set(this.#held)
     for (const action of this.#pending) snapshot.add(action)
     this.#pending.clear()

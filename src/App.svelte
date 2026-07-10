@@ -6,9 +6,10 @@
 
   let gameCanvas = $state<ReturnType<typeof GameCanvas>>()
 
-  // UI tips only make sense for keyboard players — hide them the moment a
-  // touch screen or a gamepad can drive the game instead
-  let keyboardOnly = $derived(!touch.supported && !gamepad.connected)
+  // UI tips only make sense for keyboard players — hide them the moment the
+  // touch overlay or a gamepad can drive the game instead (a touch screen
+  // with the controls option off still leaves the keyboard as the only input)
+  let keyboardOnly = $derived(!touch.active && !gamepad.connected)
 
   // handy for debugging from the console
   ;(window as any).__gamepad = gamepad

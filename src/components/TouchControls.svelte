@@ -217,10 +217,12 @@
       onpointercancel={buttonsUp}
     >
       <!-- pressed buttons ride under the finger (dyn); the anchors are idle
-           guides that vanish while their button is finger-held -->
-      <span class="side b {runLocked && !bTouch ? 'on' : ''} {runLocked ? 'locked' : ''}">
+           guides that vanish while their button is finger-held. While the run
+           lock is latched the B button hides entirely — the lit chip is the
+           state readout, and every B-side touch is A anyway. -->
+      <span class="side b {runLocked ? 'locked' : ''}">
         <span class="lock-chip">{runLocked ? '🔒 B LOCKED' : 'LOCK B'}</span>
-        {#if !bTouch}<span class="face">B</span>{/if}
+        {#if !bTouch && !runLocked}<span class="face">B</span>{/if}
       </span>
       <span class="side a">
         {#if aTouches.length === 0}<span class="face">A</span>{/if}

@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import Constants from '../constants'
 import { gamepad } from '../../lib/gamepad.svelte'
 import { Box } from '../objects/box'
 import { Brick } from '../objects/brick'
@@ -23,6 +24,7 @@ export class GameScene extends Phaser.Scene {
   private platforms: Phaser.GameObjects.Group
   private player: Mario
   private portals: Phaser.GameObjects.Group
+  private currentLevel: string
 
   constructor() {
     super({
@@ -30,34 +32,64 @@ export class GameScene extends Phaser.Scene {
     })
   }
 
-  init(): void {}
+  init(): void {
+    if (this.registry.get("level") === undefined) {
+      Mario.initGlobalDataManager(this);
+      this.currentLevel = this.registry.get("level");
+    } else {
+      this.currentLevel = this.registry.get("level");
+    }
+  }
 
   create(): void {
+    // scale gravity with the tile size, like levele1-scene does — mario
+    // multiplies his velocities by physicsScale, and trajectories only keep
+    // their tile-height if gravity scales by the same factor
+    this.physics.world.gravity.y =
+      475 * (this.registry.get('physicsScale') ?? 1)
+
     // *****************************************************************
     // SETUP TILEMAP
     // *****************************************************************
 
+    const key = this.registry.get('level')
+    // the Vegas maps (levelVegas, levelVegasRoom1) share the castle tileset
+    // and bg/ground layer names; the GB maps use tiles.png and
+    // backgroundLayer/foregroundLayer
+    const isVegas = key.startsWith('levelVegas')
+
     // create our tilemap from Tiled JSON
-    this.map = this.make.tilemap({ key: this.registry.get('level') })
+    this.map = this.make.tilemap({ key })
     // add our tileset and layers to our tilemap
-    this.tileset = this.map.addTilesetImage('tiles')
+    // Vegas uses a 16px extruded tileset (1px margin, 2px spacing); the GB
+    // levels' 8px tileset uses the sizes embedded in the map itself
+    this.tileset = isVegas
+      ? this.map.addTilesetImage('tiles', 'tileset', 16, 16, 1, 2)
+      : this.map.addTilesetImage('tiles')
     this.backgroundLayer = this.map.createLayer(
-      'backgroundLayer',
+      isVegas ? 'bg' : 'backgroundLayer',
       this.tileset,
       0,
       0
     )
 
     this.foregroundLayer = this.map.createLayer(
-      'foregroundLayer',
+      isVegas ? 'ground' : 'foregroundLayer',
       this.tileset,
       0,
       0
     )
     this.foregroundLayer.setName('foregroundLayer')
 
-    // set collision for tiles with the property collide set to true
-    this.foregroundLayer.setCollisionByProperty({ collide: true })
+    // pin the tile layers' depths so decoration sprites can slot between
+    // them (bg wall < decorations < ground/objects)
+    this.backgroundLayer.setDepth(Constants.DEPTH.background)
+    this.foregroundLayer.setDepth(Constants.DEPTH.foregroundMain)
+
+    // set collision for solid tiles — the GB maps mark them with 'collide'
+    // (old tileproperties format), Vegas with 'collision' (new tiles array);
+    // setCollisionByProperty matches a tile on any listed property
+    this.foregroundLayer.setCollisionByProperty({ collide: true, collision: true })
 
     // *****************************************************************
     // GAME OBJECTS
@@ -130,6 +162,16 @@ export class GameScene extends Phaser.Scene {
       this.map.widthInPixels,
       this.map.heightInPixels
     )
+
+    // mario's fell-into-a-hole check compares against world.bounds.bottom,
+    // which defaults to the 160x144 canvas — too short for Vegas' 224px-tall
+    // map (he'd "die" mid-air while still above the ground)
+    this.physics.world.setBounds(
+      0,
+      0,
+      this.map.widthInPixels,
+      this.map.heightInPixels
+    )
   }
 
   update(): void {
@@ -141,6 +183,21 @@ export class GameScene extends Phaser.Scene {
     const objects = this.map.getObjectLayer('objects').objects as any[]
 
     objects.forEach((object) => {
+      if (object.type === Constants.OBJECT_TYPES.image) {
+        // decoration sprite — Tiled image objects anchor at bottom-left, and
+        // the object name doubles as the texture key (and animation key for
+        // the multi-frame aseprite exports)
+        const decoration = this.add
+          .sprite(object.x, object.y, object.name)
+          .setOrigin(0, 1)
+          .setDepth(Constants.DEPTH.foregroundSecondary)
+          .setFlipX(!!object.flippedHorizontal)
+
+        if (this.anims.exists(object.name)) {
+          decoration.play(object.name)
+        }
+      }
+
       if (object.type === 'portal') {
         this.portals.add(
           new Portal({
@@ -336,12 +393,28 @@ export class GameScene extends Phaser.Scene {
       // restart the game scene
       this.scene.restart()
     } else if (_portal.name === 'exit') {
-      // level complete — continue into levele1 (ported from the mario repo)
-      this.registry.set('level', 'levele1')
-      this.registry.set('spawn', { x: 16, y: 994, dir: 'down' })
-      this.scene.stop('GameScene')
-      this.scene.stop('HUDScene')
-      this.scene.start('LevelE1Scene')
+      if (this.currentLevel === 'levelVegasRoom1') {
+        // stage 3 (airship) complete — drop down into levele1 from above
+        this.registry.set('level', 'levele1')
+        this.registry.set('spawn', { x: 16, y: 832, dir: 'down' })
+        this.scene.stop('GameScene')
+        this.scene.stop('HUDScene')
+        this.scene.start('LevelE1Scene')
+      } else if (this.currentLevel === 'levelVegas') {
+        // stage 2 complete — board the airship (levelVegasRoom1)
+        this.registry.set('level', 'levelVegasRoom1')
+        this.registry.set('physics', Constants.VEGAS.physics)
+        this.registry.set('physicsScale', Constants.VEGAS.physicsScale)
+        this.registry.set('spawn', { x: 16, y: 128, dir: 'down' })
+        this.scene.restart()
+      } else {
+        // level1 complete — continue into levelVegas (16px tiles, GB feel)
+        this.registry.set('level', 'levelVegas')
+        this.registry.set('physics', Constants.VEGAS.physics)
+        this.registry.set('physicsScale', Constants.VEGAS.physicsScale)
+        this.registry.set('spawn', Constants.VEGAS.spawn)
+        this.scene.restart()
+      }
     }
   }
 

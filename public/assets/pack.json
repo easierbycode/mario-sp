@@ -14,6 +14,16 @@
       },
       {
         "type": "tilemapTiledJSON",
+        "key": "levelVegas",
+        "url": "./assets/maps/vegas-level.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
+        "key": "levelVegasRoom1",
+        "url": "./assets/maps/vegas-level-room1.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
         "key": "level1Room1",
         "url": "./assets/maps/level1room1.json"
       },
@@ -26,6 +36,11 @@
         "type": "image",
         "key": "tiles",
         "url": "./assets/tiles/tiles.png"
+      },
+      {
+        "type": "image",
+        "key": "tileset",
+        "url": "./assets/tiles/castle-tileset.png"
       },
       {
         "type": "json",
@@ -257,6 +272,90 @@
         "frameConfig": {
           "frameWidth": 18,
           "frameHeight": 27
+        }
+      },
+      {
+        "type": "image",
+        "key": "slot-machine",
+        "url": "./assets/sprites/slot-machine.png"
+      },
+      {
+        "type": "image",
+        "key": "slot-machine2",
+        "url": "./assets/sprites/slot-machine2.png"
+      },
+      {
+        "type": "image",
+        "key": "bar",
+        "url": "./assets/sprites/bar.png"
+      },
+      {
+        "type": "image",
+        "key": "rope",
+        "url": "./assets/sprites/rope.png"
+      },
+      {
+        "type": "image",
+        "key": "chips",
+        "url": "./assets/sprites/chips.png"
+      },
+      {
+        "type": "image",
+        "key": "chips2",
+        "url": "./assets/sprites/chips2.png"
+      },
+      {
+        "type": "spritesheet",
+        "key": "neon",
+        "url": "./assets/sprites/neon.png",
+        "frameConfig": {
+          "frameWidth": 96,
+          "frameHeight": 64
+        }
+      },
+      {
+        "type": "spritesheet",
+        "key": "arcade",
+        "url": "./assets/sprites/arcade.png",
+        "frameConfig": {
+          "frameWidth": 64,
+          "frameHeight": 80
+        }
+      },
+      {
+        "type": "spritesheet",
+        "key": "bar-cat",
+        "url": "./assets/sprites/bar-cat.png",
+        "frameConfig": {
+          "frameWidth": 48,
+          "frameHeight": 74
+        }
+      },
+      {
+        "type": "spritesheet",
+        "key": "disco-ball",
+        "url": "./assets/sprites/disco-ball.png",
+        "frameConfig": {
+          "frameWidth": 32,
+          "frameHeight": 32
+        }
+      },
+      {
+        "type": "spritesheet",
+        "key": "goomba-concierge",
+        "url": "./assets/sprites/goomba-concierge.png",
+        "frameConfig": {
+          "frameWidth": 48,
+          "frameHeight": 52
+        }
+      },
+      {
+        "type": "spritesheet",
+        "key": "yoshi",
+        "url": "./assets/sprites/yoshi.png",
+        "frameConfig": {
+          "frameWidth": 30,
+          "frameHeight": 58
         }
       }
     ]

@@ -22,11 +22,11 @@ const defaultAnimationFrames: Record<string, any> = {
   },
 }
 
-// E1's maps use 16px tiles — double the GB levels' 8px. Scaling gravity and
-// every velocity by the same factor doubles all distances with identical
-// timing, so jumps and gaps play exactly like the original implementation in
-// tile units. Mario reads this back from the physicsScale registry key.
-const PHYSICS_SCALE = 2
+// the original mario repo ran its SMB3 physics (walk 90 / run 210 /
+// jump -206.25..-236.25) directly on 16px tiles under gravity 475 — no
+// scaling. Keep this at 1 so E1 matches it exactly; Mario reads it back
+// from the physicsScale registry key.
+const PHYSICS_SCALE = 1
 const BASE_GRAVITY = 475 // matches physics.arcade.gravity.y in game/config.ts
 
 // Room A/B's question block (tile id 225 + firstgid 1) — hitting it from

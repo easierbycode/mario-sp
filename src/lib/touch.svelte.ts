@@ -10,7 +10,7 @@
 // key) so the pad can swap to Nintendo gray while the Nintendo-red theme is on.
 
 import { loadCodemonkeyConfig } from './codemonkey-config'
-import type { GamepadAction } from './gamepad.svelte'
+import { gamepad, type GamepadAction } from './gamepad.svelte'
 
 export type CmgTheme = 'xbox' | 'nintendo'
 
@@ -39,7 +39,8 @@ class TouchState {
 
   /** The overlay renders (and input merges) only when this is true. */
   get active(): boolean {
-    return this.supported && this.enabled
+    // a physical gamepad takes over — hide the touch pad while one is connected
+    return this.supported && this.enabled && !gamepad.connected
   }
 
   isDown(action: GamepadAction): boolean {

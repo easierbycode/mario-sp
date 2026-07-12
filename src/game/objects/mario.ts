@@ -349,4 +349,10 @@ export class Mario extends Phaser.GameObjects.Sprite {
       this.body.checkCollision.right = false
     }
   }
+
+  static initGlobalDataManager(scene): void {
+    scene.registry.set("level", "level1");
+    scene.registry.set("spawn", { x: 12, y: 44, dir: "down" });
+    scene.registry.set("marioSize", "small");
+  }
 }

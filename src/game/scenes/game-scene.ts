@@ -1,6 +1,10 @@
 import Phaser from 'phaser'
 import Constants from '../constants'
 import { gamepad } from '../../lib/gamepad.svelte'
+import { touch } from '../../lib/touch.svelte'
+import { consumeEditorRequest } from '../../lib/cmg'
+import { fetchRtdbMap } from '../../lib/rtdb-maps'
+import { tilesetTextureFor } from '../level-assets'
 import { Box } from '../objects/box'
 import { Brick } from '../objects/brick'
 import { Collectible } from '../objects/collectible'
@@ -25,6 +29,10 @@ export class GameScene extends Phaser.Scene {
   private player: Mario
   private portals: Phaser.GameObjects.Group
   private currentLevel: string
+
+  // level-editor trigger (SELECT+↑ chord; SHIFT+↑ on keyboard)
+  private editorSelectKey: Phaser.Input.Keyboard.Key
+  private editorUpKey: Phaser.Input.Keyboard.Key
 
   constructor() {
     super({
@@ -53,9 +61,18 @@ export class GameScene extends Phaser.Scene {
     // *****************************************************************
 
     const key = this.registry.get('level')
+
+    // maps not shipped in pack.json (e.g. ?map=<key>) are imported from the
+    // RTDB, then the scene restarts with the cache populated
+    if (!this.cache.tilemap.exists(key)) {
+      this.loadMapFromRtdb(key)
+      return
+    }
+
     // the Vegas maps (levelVegas, levelVegasRoom1) share the castle tileset
     // and bg/ground layer names; the GB maps use tiles.png and
-    // backgroundLayer/foregroundLayer
+    // backgroundLayer/foregroundLayer; level4-2 ships its own 42-tile
+    // playland tileset (tiles4-2.png) under the same in-map name 'tiles'
     const isVegas = key.startsWith('levelVegas')
 
     // create our tilemap from Tiled JSON
@@ -63,9 +80,13 @@ export class GameScene extends Phaser.Scene {
     // add our tileset and layers to our tilemap
     // Vegas uses a 16px extruded tileset (1px margin, 2px spacing); the GB
     // levels' 8px tileset uses the sizes embedded in the map itself
-    this.tileset = isVegas
-      ? this.map.addTilesetImage('tiles', 'tileset', 16, 16, 1, 2)
-      : this.map.addTilesetImage('tiles')
+    const tilesetTexture = tilesetTextureFor(this, key)
+    this.tileset = this.map.addTilesetImage(
+      this.map.tilesets[0]?.name ?? 'tiles',
+      tilesetTexture.key,
+      ...(tilesetTexture.args ?? [])
+    )
+    // level4-2 has no background layer — createLayer returns null there
     this.backgroundLayer = this.map.createLayer(
       isVegas ? 'bg' : 'backgroundLayer',
       this.tileset,
@@ -73,17 +94,25 @@ export class GameScene extends Phaser.Scene {
       0
     )
 
+    // RTDB-imported maps may name their main layer anything — fall back to
+    // the first tile layer in the map
+    const fgName = isVegas ? 'ground' : 'foregroundLayer'
     this.foregroundLayer = this.map.createLayer(
-      isVegas ? 'ground' : 'foregroundLayer',
+      this.map.getLayer(fgName) ? fgName : this.map.layers[0]?.name,
       this.tileset,
       0,
       0
     )
     this.foregroundLayer.setName('foregroundLayer')
 
+    this.editorSelectKey = this.input.keyboard.addKey(
+      gamepad.keyFor('select') ?? 'SHIFT'
+    )
+    this.editorUpKey = this.input.keyboard.addKey(gamepad.keyFor('up') ?? 'UP')
+
     // pin the tile layers' depths so decoration sprites can slot between
     // them (bg wall < decorations < ground/objects)
-    this.backgroundLayer.setDepth(Constants.DEPTH.background)
+    this.backgroundLayer?.setDepth(Constants.DEPTH.background)
     this.foregroundLayer.setDepth(Constants.DEPTH.foregroundMain)
 
     // set collision for solid tiles — the GB maps mark them with 'collide'
@@ -175,7 +204,91 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(): void {
+    // create() bails early while an RTDB map import is in flight
+    if (!this.player) return
+
+    if (this.editorTriggered()) {
+      this.openEditor()
+      return
+    }
+
     this.player.update()
+  }
+
+  /**
+   * SELECT+↑ (SNES: SELECT+L2) during gameplay, SHIFT+↑ on keyboard, the
+   * touch pad's SELECT+↑, or the CMG launcher's OSD "Level Editor" action.
+   */
+  private editorTriggered(): boolean {
+    const selectHeld =
+      this.editorSelectKey.isDown || gamepad.isDown('select') || touch.isDown('select')
+    const upHeld = this.editorUpKey.isDown || gamepad.isDown('up') || touch.isDown('up')
+    const keyboardFresh =
+      Phaser.Input.Keyboard.JustDown(this.editorUpKey) ||
+      Phaser.Input.Keyboard.JustDown(this.editorSelectKey)
+    const touchFresh = touch.justPressed('up') || touch.justPressed('select')
+
+    return (
+      consumeEditorRequest() ||
+      gamepad.justPressed('editor') ||
+      (selectHeld && upHeld && (keyboardFresh || touchFresh))
+    )
+  }
+
+  private openEditor(): void {
+    this.scene.launch('LevelEditorScene', {
+      levelKey: this.currentLevel,
+      playerX: this.player.x,
+      playerY: this.player.y,
+    })
+    // freeze and hide gameplay while the editor owns the screen — the
+    // editor wakes/resumes (and restarts on save) when it exits
+    this.scene.sleep('HUDScene')
+    this.scene.setVisible(false)
+    this.scene.pause()
+  }
+
+  /** Import a map stored at RTDB /maps/<key> = { json, png }, then restart. */
+  private async loadMapFromRtdb(key: string): Promise<void> {
+    const loading = this.add.bitmapText(8, 8, 'font', 'LOADING MAP...', 8)
+    const record = await fetchRtdbMap(key)
+    if (!this.scene.isActive()) return
+    loading.destroy()
+
+    if (!record) {
+      console.warn(`🗺️ map "${key}" not found in RTDB — falling back to level1`)
+      this.registry.set('level', 'level1')
+      this.registry.set('world', '1-1')
+      this.scene.restart()
+      return
+    }
+
+    this.cache.tilemap.add(key, {
+      format: Phaser.Tilemaps.Formats.TILED_JSON,
+      data: record.json,
+    })
+
+    // spawn where the map's player object sits (Tiled anchors objects at
+    // the bottom-left)
+    const objectLayer = record.json.layers?.find((l: any) => l.type === 'objectgroup')
+    const playerObject = objectLayer?.objects?.find(
+      (o: any) => o.type === 'player' || o.name === 'player'
+    )
+    if (playerObject) {
+      this.registry.set('spawn', {
+        x: playerObject.x,
+        y: playerObject.y - (playerObject.height ?? 0),
+        dir: 'down',
+      })
+    }
+    this.registry.set('world', key)
+
+    if (record.png && !this.textures.exists(`map-${key}`)) {
+      this.textures.once(`addtexture-map-${key}`, () => this.scene.restart())
+      this.textures.addBase64(`map-${key}`, record.png)
+    } else {
+      this.scene.restart()
+    }
   }
 
   private loadObjectsFromTilemap(): void {
@@ -407,8 +520,17 @@ export class GameScene extends Phaser.Scene {
         this.registry.set('physicsScale', Constants.VEGAS.physicsScale)
         this.registry.set('spawn', { x: 16, y: 128, dir: 'down' })
         this.scene.restart()
+      } else if (this.currentLevel === 'level1') {
+        // level1 complete — descend into level 4-2 (playland underground,
+        // same GB physics and 8px tiles as level1)
+        this.registry.set('level', 'level4-2')
+        this.registry.set('world', '4-2')
+        this.registry.set('physics', Constants.LEVEL42.physics)
+        this.registry.set('physicsScale', Constants.LEVEL42.physicsScale)
+        this.registry.set('spawn', Constants.LEVEL42.spawn)
+        this.scene.restart()
       } else {
-        // level1 complete — continue into levelVegas (16px tiles, GB feel)
+        // level4-2 complete — continue into levelVegas (16px tiles, GB feel)
         this.registry.set('level', 'levelVegas')
         this.registry.set('physics', Constants.VEGAS.physics)
         this.registry.set('physicsScale', Constants.VEGAS.physicsScale)

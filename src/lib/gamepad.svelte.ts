@@ -18,6 +18,8 @@ export type GamepadAction =
   | 'start'
   | 'select'
   | 'fullscreen'
+  | 'suit'
+  | 'editor'
 
 const ACTIONS: GamepadAction[] = [
   'up',
@@ -29,6 +31,8 @@ const ACTIONS: GamepadAction[] = [
   'start',
   'select',
   'fullscreen',
+  'suit',
+  'editor',
 ]
 
 /** Standard-mapping button indexes (https://w3.org/TR/gamepad/#remapping). */
@@ -118,9 +122,14 @@ class GamepadState {
   /** Fired once per mapped button press (edge-triggered from poll()). */
   onaction: ((action: GamepadAction) => void) | null = null
 
+  /** Fired when any button (mapped or not) goes down on any pad. */
+  onanybutton: (() => void) | null = null
+
   #held = new Set<GamepadAction>()
   #fresh = new Set<GamepadAction>()
   #down = new Set<number>()
+  #freshButtons = new Set<number>()
+  #comboDown = new Set<GamepadAction>()
 
   /** Whether an action's button is currently held on any connected pad. */
   isDown(action: GamepadAction): boolean {
@@ -130,6 +139,16 @@ class GamepadState {
   /** True only on the poll where the action's button went down. */
   justPressed(action: GamepadAction): boolean {
     return this.#fresh.has(action)
+  }
+
+  /** Raw standard-mapping button state (for buttons with no mapped action). */
+  buttonIsDown(index: number): boolean {
+    return this.#down.has(index)
+  }
+
+  /** True only on the poll where the raw button went down. */
+  buttonJustPressed(index: number): boolean {
+    return this.#freshButtons.has(index)
   }
 
   /** The Phaser keyboard key name mapped to an action, e.g. 'SPACE'. */
@@ -179,21 +198,38 @@ class GamepadState {
    */
   poll(): void {
     this.#fresh.clear()
+    this.#freshButtons.clear()
     if (!this.connected) return
 
     const held = new Set<GamepadAction>()
     const down = new Set<number>()
+    let anyFresh = false
+    let snesL1 = false
+    let snesL2 = false
 
     for (const pad of navigator.getGamepads?.() ?? []) {
       if (!pad) continue
 
-      for (const [indexKey, action] of Object.entries(this.buttonMap)) {
-        const index = Number(indexKey)
-        if (pad.buttons[index]?.pressed) {
+      for (let index = 0; index < pad.buttons.length; index++) {
+        if (!pad.buttons[index]?.pressed) continue
+        down.add(index)
+        if (!this.#down.has(index)) {
+          anyFresh = true
+          this.#freshButtons.add(index)
+        }
+
+        const action = this.buttonMap[index]
+        if (action) {
           held.add(action)
-          down.add(index)
           if (!this.#down.has(index)) this.#fresh.add(action)
         }
+      }
+
+      // SNES-style pads get shoulder-button combos (their d-pad often
+      // reports as axes, so SELECT+← isn't reachable there)
+      if (/snes/i.test(pad.id)) {
+        snesL1 ||= !!pad.buttons[BUTTON_INDEXES.L1]?.pressed
+        snesL2 ||= !!pad.buttons[BUTTON_INDEXES.L2]?.pressed
       }
 
       // left analog stick doubles as the d-pad
@@ -204,9 +240,29 @@ class GamepadState {
       if (y > AXIS_THRESHOLD) held.add('down')
     }
 
+    // chords: SELECT+← (SNES: SELECT+L) toggles fullscreen, SNES SELECT+L2
+    // swaps the space suit at the title, and SELECT+↑ (SNES: SELECT+L2)
+    // opens the level editor during gameplay — edge-triggered on the chord
+    // itself, so holding it fires once
+    const combos: Array<[GamepadAction, boolean]> = [
+      ['fullscreen', held.has('select') && (held.has('left') || snesL1)],
+      ['suit', held.has('select') && snesL2],
+      ['editor', held.has('select') && (held.has('up') || snesL2)],
+    ]
+    for (const [action, active] of combos) {
+      if (active) {
+        held.add(action)
+        if (!this.#comboDown.has(action)) this.#fresh.add(action)
+        this.#comboDown.add(action)
+      } else {
+        this.#comboDown.delete(action)
+      }
+    }
+
     this.#held = held
     this.#down = down
 
+    if (anyFresh) this.onanybutton?.()
     for (const action of this.#fresh) this.onaction?.(action)
   }
 
@@ -217,6 +273,8 @@ class GamepadState {
     if (!this.connected) {
       this.#held = new Set()
       this.#down.clear()
+      this.#freshButtons.clear()
+      this.#comboDown.clear()
     }
   }
 

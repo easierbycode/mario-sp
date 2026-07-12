@@ -66,7 +66,11 @@ export class MenuScene extends Phaser.Scene {
     const selectHeld =
       this.selectKey.isDown || gamepad.isDown('select') || touch.isDown('select')
     const upHeld = this.upKey.isDown || gamepad.isDown('up') || touch.isDown('up')
-    if (selectHeld && upHeld && (selectFresh || upFresh)) {
+    // SNES pads also toggle it with SELECT + L2 (chord detected in poll())
+    if (
+      (selectHeld && upHeld && (selectFresh || upFresh)) ||
+      gamepad.justPressed('suit')
+    ) {
       const next =
         this.registry.get('skin') === 'space' ? 'classic' : 'space'
       this.registry.set('skin', next)
@@ -115,7 +119,13 @@ export class MenuScene extends Phaser.Scene {
 
   private initGlobalDataManager(): void {
     this.registry.set('time', 400)
-    this.registry.set('level', 'level1')
+    // ?map=<key> boots into a map imported from the RTDB (GameScene fetches
+    // /maps/<key> when the key isn't in the local cache)
+    const urlMap =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('map')
+        : null
+    this.registry.set('level', urlMap || 'level1')
     // the SELECT skin choice survives game overs — only seed the default
     if (!this.registry.has('skin')) {
       this.registry.set('skin', 'classic')
@@ -123,7 +133,7 @@ export class MenuScene extends Phaser.Scene {
 
     const { physics, physicsScale, spawn } = this.levelOpts(this.registry.get('level'))
 
-    this.registry.set('world', '1-1')
+    this.registry.set('world', urlMap || '1-1')
     this.registry.set('worldTime', 'WORLD TIME')
     this.registry.set('score', 0)
     this.registry.set('coins', 0)

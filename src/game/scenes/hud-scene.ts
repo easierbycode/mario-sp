@@ -25,6 +25,12 @@ export class HUDScene extends Phaser.Scene {
     level.events.on('coinsChanged', this.updateCoins, this)
     level.events.on('scoreChanged', this.updateScore, this)
     level.events.on('livesChanged', this.updateLives, this)
+    // level transitions rewrite 'world' in the registry (e.g. 1-1 → 4-2);
+    // the registry outlives this scene, so drop the listener on shutdown
+    this.registry.events.on('changedata-world', this.updateWorld, this)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.registry.events.off('changedata-world', this.updateWorld, this)
+    })
 
     // add timer
     this.timer = this.time.addEvent({
@@ -66,5 +72,9 @@ export class HUDScene extends Phaser.Scene {
     this.textElements
       .get('LIVES')
       .setText(`Lives: ${this.registry.get('lives')}`)
+  }
+
+  private updateWorld() {
+    this.textElements.get('WORLD').setText(`${this.registry.get('world')}`)
   }
 }

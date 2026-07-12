@@ -14,6 +14,11 @@
       },
       {
         "type": "tilemapTiledJSON",
+        "key": "level4-2",
+        "url": "./assets/maps/level4-2.json"
+      },
+      {
+        "type": "tilemapTiledJSON",
         "key": "levelVegas",
         "url": "./assets/maps/vegas-level.json"
       },
@@ -36,6 +41,11 @@
         "type": "image",
         "key": "tiles",
         "url": "./assets/tiles/tiles.png"
+      },
+      {
+        "type": "image",
+        "key": "tiles42",
+        "url": "./assets/tiles/tiles4-2.png"
       },
       {
         "type": "image",

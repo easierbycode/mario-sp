@@ -33,6 +33,14 @@ export default {
     spawn         : { x: 16, y: 128, dir: 'down' },
   },
 
+  // Playland 4-2: GB physics on 8px tiles like level1, but the map's two
+  // leftmost columns are a pit — spawn over the first solid column instead
+  LEVEL42: {
+    physics       : 'gb',
+    physicsScale  : 1,
+    spawn         : { x: 24, y: 44, dir: 'down' },
+  },
+
   // Vegas: 16px tiles but GB game-feel — the GB movement profile with all
   // distances doubled, so jumps stay ~4.3 tiles like level1 instead of the
   // SMA4 profile's 5.6+ (too high for the 14-tile-tall casino map)

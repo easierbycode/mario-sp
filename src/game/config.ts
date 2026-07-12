@@ -3,12 +3,13 @@ import { BootScene } from './scenes/boot-scene'
 import { GameScene } from './scenes/game-scene'
 import { HUDScene } from './scenes/hud-scene'
 import { LevelE1Scene } from './scenes/levele1-scene'
+import { LevelEditorScene } from './scenes/level-editor-scene'
 import { MenuScene } from './scenes/menu-scene'
 
 export const GAME_WIDTH = 160
 export const GAME_HEIGHT = 144
 
-export const scenes = [BootScene, MenuScene, HUDScene, GameScene, LevelE1Scene]
+export const scenes = [BootScene, MenuScene, HUDScene, GameScene, LevelE1Scene, LevelEditorScene]
 
 export const physics: Phaser.Types.Core.PhysicsConfig = {
   default: 'arcade',

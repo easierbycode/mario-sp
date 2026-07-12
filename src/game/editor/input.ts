@@ -22,6 +22,8 @@ export interface PadState {
   boostPressed: boolean
   start: boolean
   select: boolean
+  /** left-stick Y, AthenaEnv range (-127..127, up negative) */
+  ly: number
 }
 
 export function poll(ps2: PS2Runtime): PadState {
@@ -44,5 +46,6 @@ export function poll(ps2: PS2Runtime): PadState {
     boostPressed: pad.justPressed(P.TRIANGLE),
     start: pad.justPressed(P.START),
     select: pad.justPressed(P.SELECT),
+    ly: pad.ly,
   }
 }

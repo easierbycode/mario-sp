@@ -28,6 +28,8 @@ export class GameScene extends Phaser.Scene {
   private platforms: Phaser.GameObjects.Group
   private player: Mario
   private portals: Phaser.GameObjects.Group
+  /** solid 'static' image objects (pipes, chip stacks) — like levele1's */
+  private groundGroup: Phaser.Physics.Arcade.StaticGroup
   private currentLevel: string
 
   // level-editor trigger (SELECT+↑ chord; SHIFT+↑ on keyboard)
@@ -139,6 +141,7 @@ export class GameScene extends Phaser.Scene {
     this.collectibles = this.add.group({ runChildUpdate: true })
     this.enemies = this.add.group({ runChildUpdate: true })
     this.platforms = this.add.group({ runChildUpdate: true })
+    this.groundGroup = this.physics.add.staticGroup()
 
     this.loadObjectsFromTilemap()
 
@@ -146,7 +149,9 @@ export class GameScene extends Phaser.Scene {
     // COLLIDERS
     // *****************************************************************
     this.physics.add.collider(this.player, this.foregroundLayer)
+    this.physics.add.collider(this.player, this.groundGroup)
     this.physics.add.collider(this.enemies, this.foregroundLayer)
+    this.physics.add.collider(this.enemies, this.groundGroup)
     this.physics.add.collider(this.enemies, this.boxes)
     this.physics.add.collider(this.enemies, this.bricks)
     this.physics.add.collider(this.player, this.bricks)
@@ -394,14 +399,33 @@ export class GameScene extends Phaser.Scene {
         // the object name doubles as the texture key (and animation key for
         // the multi-frame aseprite exports)
         const decoration = this.add
-          .sprite(object.x, object.y, object.name)
+          .sprite(object.x, object.y, object.name, object.properties?.frame)
           .setOrigin(0, 1)
           .setDepth(Constants.DEPTH.foregroundSecondary)
           .setFlipX(!!object.flippedHorizontal)
 
+        if (object.properties?.scale) decoration.setScale(object.properties.scale)
+
         if (this.anims.exists(object.name)) {
           decoration.play(object.name)
         }
+      }
+
+      if (object.type === Constants.OBJECT_TYPES.static) {
+        // solid decoration (SMA4 pipe, casino chip stacks) — same bottom-left
+        // anchor and name-is-texture convention as 'image', but Mario and the
+        // enemies collide with it; a 'frame' property picks a spritesheet
+        // frame, 'scale' shrinks oversized art
+        const solid = this.groundGroup.create(
+          object.x,
+          object.y,
+          object.name,
+          object.properties?.frame
+        ) as Phaser.Types.Physics.Arcade.SpriteWithStaticBody
+        solid.setOrigin(0, 1)
+        if (object.properties?.scale) solid.setScale(object.properties.scale)
+        solid.refreshBody()
+        solid.setDepth(Constants.DEPTH.foregroundMain)
       }
 
       if (object.type === 'portal') {
@@ -582,23 +606,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handlePlayerPortalOverlap(_player: Mario, _portal: Portal): void {
-    if (
-      (_player.actionIsDown('down') &&
-        _portal.getPortalDestination().dir === 'down') ||
-      (_player.actionIsDown('right') &&
-        _portal.getPortalDestination().dir === 'right')
-    ) {
-      // set new level and new destination for mario
-      this.registry.set('level', _portal.name)
-      this.registry.set('spawn', {
-        x: _portal.getPortalDestination().x,
-        y: _portal.getPortalDestination().y,
-        dir: _portal.getPortalDestination().dir,
-      })
-
-      // restart the game scene
-      this.scene.restart()
-    } else if (_portal.name === 'exit') {
+    if (_portal.name === 'exit') {
+      // pipe exits (direction 'down') want the classic press-down while
+      // standing on the pipe; door exits (direction 'none') fire on touch
+      if (
+        _portal.getPortalDestination().dir === 'down' &&
+        !_player.actionIsDown('down')
+      ) {
+        return
+      }
       if (this.currentLevel === 'levelVegasRoom1') {
         // stage 3 (airship) complete — drop down into levele1 from above
         this.registry.set('level', 'levele1')
@@ -630,6 +646,26 @@ export class GameScene extends Phaser.Scene {
         this.registry.set('spawn', Constants.VEGAS.spawn)
         this.scene.restart()
       }
+      return
+    }
+
+    // portals named for a level warp there when entered in their direction
+    if (
+      (_player.actionIsDown('down') &&
+        _portal.getPortalDestination().dir === 'down') ||
+      (_player.actionIsDown('right') &&
+        _portal.getPortalDestination().dir === 'right')
+    ) {
+      // set new level and new destination for mario
+      this.registry.set('level', _portal.name)
+      this.registry.set('spawn', {
+        x: _portal.getPortalDestination().x,
+        y: _portal.getPortalDestination().y,
+        dir: _portal.getPortalDestination().dir,
+      })
+
+      // restart the game scene
+      this.scene.restart()
     }
   }
 

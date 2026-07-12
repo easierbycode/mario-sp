@@ -146,6 +146,53 @@ class GamepadState {
     return this.#down.has(index)
   }
 
+  /**
+   * D-pad-only direction state — excludes the analog-stick merge poll()
+   * applies to up/down/left/right, for contexts (like the level editor)
+   * that give the stick its own job. Pads whose d-pad reports as axes
+   * (SNES-style) still count those axes as the d-pad here.
+   */
+  dpadIsDown(action: 'up' | 'down' | 'left' | 'right'): boolean {
+    const index = {
+      up: BUTTON_INDEXES.DPAD_UP,
+      down: BUTTON_INDEXES.DPAD_DOWN,
+      left: BUTTON_INDEXES.DPAD_LEFT,
+      right: BUTTON_INDEXES.DPAD_RIGHT,
+    }[action]
+
+    for (const pad of navigator.getGamepads?.() ?? []) {
+      if (!pad) continue
+      if (pad.buttons[index]?.pressed) return true
+      if (this.#dpadOnAxes(pad)) {
+        const [x, y] = [pad.axes[0] ?? 0, pad.axes[1] ?? 0]
+        if (action === 'left' && x < -AXIS_THRESHOLD) return true
+        if (action === 'right' && x > AXIS_THRESHOLD) return true
+        if (action === 'up' && y < -AXIS_THRESHOLD) return true
+        if (action === 'down' && y > AXIS_THRESHOLD) return true
+      }
+    }
+    return false
+  }
+
+  /**
+   * Left analog stick Y (-1 up .. 1 down) from pads with a real stick;
+   * axes-as-d-pad pads (SNES-style) return 0 so a d-pad press never zooms.
+   */
+  leftStickY(): number {
+    let best = 0
+    for (const pad of navigator.getGamepads?.() ?? []) {
+      if (!pad || this.#dpadOnAxes(pad)) continue
+      const y = pad.axes[1] ?? 0
+      if (Math.abs(y) > Math.abs(best)) best = y
+    }
+    return best
+  }
+
+  /** SNES-style pads report the d-pad on the axes and have no analog stick. */
+  #dpadOnAxes(pad: Gamepad): boolean {
+    return /snes/i.test(pad.id) || pad.buttons.length <= BUTTON_INDEXES.DPAD_UP
+  }
+
   /** True only on the poll where the raw button went down. */
   buttonJustPressed(index: number): boolean {
     return this.#freshButtons.has(index)

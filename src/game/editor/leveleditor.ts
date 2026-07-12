@@ -1,17 +1,20 @@
 // Port of PS2-mari0-playland's lib/leveleditor.js, running on the
-// 5velte-ps2 runtime. Same layout (640x448 virtual screen, 448x224 map
-// viewport centered on the cursor, 190px side panel at x=450), same
-// controls (D-pad move, CROSS/jump place, SQUARE/TRIANGLE cycle sprite,
-// SELECT toggles tiles/objects mode, START saves & plays).
+// 5velte-ps2 runtime — restyled after Sonic 2's debug mode. Full-screen
+// map view centered on the cursor, and the cursor IS the selected tile
+// (blinking over a dark cell), with a one-line readout strip up top
+// instead of the PS2 build's 190px help panel. Same verbs as the PS2
+// original: D-pad move, CROSS/jump place, SQUARE/TRIANGLE cycle sprite,
+// SELECT toggles tiles/objects mode, START saves & plays.
+//
+// Analog up/down steps a zoom preview (2x..8x): the selected tile grows
+// into a translucent ghost centered on the cursor, card-flipping through
+// each size change.
 //
 // Deliberate deviations from the PS2 original:
 // - GID math honors ts.firstgid instead of assuming 1.
 // - The map render is culled to the viewport (the PS2 looped every cell).
 // - Cursor movement gets key-repeat pacing (instant step on press, then
 //   ~20 steps/sec after a short hold) instead of 60 cells/sec.
-// - Panel colors are flipped for the GB bitmap font (dark glyphs need a
-//   light panel; the PS2 drew gray TTF text on black), and the cursor /
-//   object markers render half-transparent instead of PS2-opaque.
 // - Tiles the game strips at load (rotating coins etc.) are whatever the
 //   cached map JSON holds — the editor clones that JSON, so saving cannot
 //   destroy data the way the PS2 build's live-fgData save could.
@@ -21,7 +24,7 @@ import { poll } from './input'
 import type { TilesetInfo } from './tiled'
 
 export interface LevelEditorDeps {
-  /** the tileset as a 5velte-ps2 Image (crop-drawn for palette + map) */
+  /** the tileset as a 5velte-ps2 Image (crop-drawn for cursor + map) */
   tilesetImage: PS2ImageInstance
   ts: TilesetInfo
   /** deep-cloned Tiled map JSON — mutated in place */
@@ -39,15 +42,17 @@ export type EditorResult =
   | 'leveleditor'
   | { nextState: 'load_new_level'; spawnPos: { x: number; y: number } }
 
-const VIEW_W = 448
-const VIEW_H = 224
-const PANEL_X = 450
-const PANEL_W = 190
 const SCREEN_W = 640
 const SCREEN_H = 448
+const HUD_H = 22
 
 const REPEAT_DELAY = 10 // frames held before auto-repeat kicks in
 const REPEAT_EVERY = 3 // frames between repeated steps
+
+const ZOOM_MAX = 8
+const ZOOM_REPEAT = 12 // frames between zoom steps while the stick stays deflected
+const AXIS_ON = 64 // stick deflection (of ±127) that counts as up/down
+const FLIP_FRAMES = 10 // length of the card-flip between zoom sizes
 
 export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
   const { tilesetImage, ts, level, fgData, font, fgLayerName } = deps
@@ -59,20 +64,32 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
   let editMode: 'tiles' | 'objects' = 'tiles'
   let firstFrame = true
   let moveHeldFrames = 0
+  let frameCount = 0
   // the SELECT+UP chord that opened the editor is usually still held on the
   // first frames — ignore input until the pad goes neutral once, so the
   // cursor doesn't march away and the mode doesn't toggle on entry
   let inputArmed = false
+
+  // zoom ghost: analog up/down steps 1x..8x; changes card-flip over
+  // FLIP_FRAMES frames from zoomFrom to zoom
+  let zoom = 1
+  let zoomFrom = 1
+  let flipT = FLIP_FRAMES
+  let zoomHeldFrames = 0
 
   let TILES: Array<{ id: number; x: number; y: number }> = []
 
   const { Draw, Color } = ps2
 
   const COLOR_CLEAR = Color.new(0, 0, 0)
-  const COLOR_PANEL = Color.new(224, 248, 208) // GB "white" — dark glyphs need a light panel
-  const COLOR_PREVIEW_BG = Color.new(64, 64, 64)
+  const COLOR_HUD = Color.new(224, 248, 208, 112) // GB "white" — the font's dark glyphs need a light strip
   const COLOR_OBJECT = Color.new(0, 0, 255, 64)
-  const COLOR_CURSOR = Color.new(255, 0, 0, 64)
+  const COLOR_CURSOR_BACK = Color.new(0, 0, 0, 96) // dark pane so the cursor tile pops on white cells
+  const TINT_GHOST = Color.new(255, 255, 255, 56) // "light" overlay — under half strength
+  const TINT_OPAQUE = Color.new(255, 255, 255, 128)
+
+  // the zoom ghost magnifies pixels — keep them square
+  tilesetImage.filter = ps2.NEAREST
 
   function initializeTileList() {
     // honor margin/spacing — the Vegas castle tileset is extruded (1px
@@ -83,6 +100,14 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
       const y = ts.margin + Math.floor(i / ts.columns) * (ts.tileHeight + ts.spacing)
       TILES.push({ id: i, x, y })
     }
+  }
+
+  function drawTile(tile: { x: number; y: number }, x: number, y: number, w: number, h: number) {
+    tilesetImage.startx = tile.x
+    tilesetImage.starty = tile.y
+    tilesetImage.endx = tile.x + TILE_SIZE
+    tilesetImage.endy = tile.y + TILE_SIZE
+    tilesetImage.draw(x, y, w, h)
   }
 
   function updatePads(pad: ReturnType<typeof poll>) {
@@ -97,6 +122,18 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
       if (pad.right && square_x < level.width - 1) square_x++
       if (pad.up && square_y > 0) square_y--
       if (pad.down && square_y < level.height - 1) square_y++
+    }
+
+    // analog up/down: step the zoom ghost (up = closer)
+    const zoomDir = pad.ly < -AXIS_ON ? 1 : pad.ly > AXIS_ON ? -1 : 0
+    zoomHeldFrames = zoomDir === 0 ? 0 : zoomHeldFrames + 1
+    if (zoomDir !== 0 && (zoomHeldFrames === 1 || zoomHeldFrames % ZOOM_REPEAT === 0)) {
+      const next = Math.max(1, Math.min(ZOOM_MAX, zoom + zoomDir))
+      if (next !== zoom) {
+        zoomFrom = zoom
+        zoom = next
+        flipT = 0
+      }
     }
 
     if (pad.runPressed) {
@@ -167,20 +204,27 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
     const pad = poll(ps2)
     if (!inputArmed) {
       inputArmed =
-        !pad.left && !pad.right && !pad.up && !pad.down && !pad.select && !pad.start
+        !pad.left &&
+        !pad.right &&
+        !pad.up &&
+        !pad.down &&
+        !pad.select &&
+        !pad.start &&
+        Math.abs(pad.ly) <= AXIS_ON
     } else {
       updatePads(pad)
     }
+    frameCount++
 
-    const camX = square_x * TILE_SIZE - VIEW_W / 2 + TILE_SIZE / 2
-    const camY = square_y * TILE_SIZE - VIEW_H / 2 + TILE_SIZE / 2
+    const camX = square_x * TILE_SIZE - SCREEN_W / 2 + TILE_SIZE / 2
+    const camY = square_y * TILE_SIZE - SCREEN_H / 2 + TILE_SIZE / 2
 
     // AthenaEnv clears the frame implicitly — do it explicitly here
     Draw.rect(0, 0, SCREEN_W, SCREEN_H, COLOR_CLEAR)
 
-    // map tiles, culled to the viewport left of the panel
+    // map tiles, culled to the full-screen viewport
     const firstTx = Math.max(0, Math.floor(camX / TILE_SIZE))
-    const lastTx = Math.min(level.width - 1, Math.ceil((camX + PANEL_X) / TILE_SIZE))
+    const lastTx = Math.min(level.width - 1, Math.ceil((camX + SCREEN_W) / TILE_SIZE))
     const firstTy = Math.max(0, Math.floor(camY / TILE_SIZE))
     const lastTy = Math.min(level.height - 1, Math.ceil((camY + SCREEN_H) / TILE_SIZE))
     for (let y = firstTy; y <= lastTy; y++) {
@@ -188,11 +232,7 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
         const gid = fgData[y * level.width + x]
         const tile = gid >= ts.firstgid ? TILES[gid - ts.firstgid] : undefined
         if (tile) {
-          tilesetImage.startx = tile.x
-          tilesetImage.starty = tile.y
-          tilesetImage.endx = tile.x + TILE_SIZE
-          tilesetImage.endy = tile.y + TILE_SIZE
-          tilesetImage.draw(x * TILE_SIZE - camX, y * TILE_SIZE - camY, TILE_SIZE, TILE_SIZE)
+          drawTile(tile, x * TILE_SIZE - camX, y * TILE_SIZE - camY, TILE_SIZE, TILE_SIZE)
         }
       }
     }
@@ -202,37 +242,40 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
       Draw.rect(obj.x - camX, obj.y - camY, obj.width, obj.height, COLOR_OBJECT)
     }
 
-    // cursor
-    Draw.rect(
-      square_x * TILE_SIZE - camX,
-      square_y * TILE_SIZE - camY,
-      TILE_SIZE,
-      TILE_SIZE,
-      COLOR_CURSOR
-    )
-
-    // side panel (drawn after the map so nothing bleeds over it)
-    Draw.rect(PANEL_X, 0, PANEL_W, SCREEN_H, COLOR_PANEL)
-    font.print(460, 15, 'A - ADD TILE/OBJECT')
-    font.print(460, 45, 'START - SAVE + PLAY')
-    font.print(460, 75, 'D-PAD - MOVE')
-    font.print(460, 105, 'Y/X - CHANGE SPRITE')
-    font.print(460, 135, 'SELECT - CHANGE MODE')
-    font.print(460, 165, `CURSOR ${square_x},${square_y}`)
-    font.print(460, 195, `TILE ID ${cur_sprite}`)
-    font.print(460, 225, `MODE ${editMode.toUpperCase()}`)
-    font.print(460, 405, 'SEL+START - EXIT')
-
-    // selected-tile preview
+    // cursor — Sonic 2 debug style: the thing you're placing, blinking in
+    // place. A dark backing pane keeps it findable on any map.
+    const cellX = square_x * TILE_SIZE - camX
+    const cellY = square_y * TILE_SIZE - camY
+    const blinkOn = (frameCount >> 3) & 1
     const selectedTile = TILES[cur_sprite]
-    if (selectedTile) {
-      Draw.rect(470, 250, 150, 150, COLOR_PREVIEW_BG)
-      tilesetImage.startx = selectedTile.x
-      tilesetImage.starty = selectedTile.y
-      tilesetImage.endx = selectedTile.x + TILE_SIZE
-      tilesetImage.endy = selectedTile.y + TILE_SIZE
-      tilesetImage.draw(470, 250, 150, 150)
+    if (editMode === 'tiles') {
+      Draw.rect(cellX - 1, cellY - 1, TILE_SIZE + 2, TILE_SIZE + 2, COLOR_CURSOR_BACK)
+      if (blinkOn && selectedTile) {
+        drawTile(selectedTile, cellX, cellY, TILE_SIZE, TILE_SIZE)
+      }
+    } else if (blinkOn) {
+      // the platform the CROSS press would drop (24x5 marker)
+      Draw.rect(cellX, cellY, 24, 5, COLOR_OBJECT)
     }
+
+    // zoom ghost — light overlay of the selected tile at 2x..8x, centered
+    // on the cursor; size changes card-flip (width sweeps through zero)
+    if (editMode === 'tiles' && selectedTile && (zoom > 1 || flipT < FLIP_FRAMES)) {
+      const p = Math.min(1, flipT / FLIP_FRAMES)
+      const size = TILE_SIZE * (zoomFrom + (zoom - zoomFrom) * p)
+      const w = Math.max(1, size * Math.abs(Math.cos(Math.PI * p)))
+      const cx = cellX + TILE_SIZE / 2
+      const cy = cellY + TILE_SIZE / 2
+      tilesetImage.color = TINT_GHOST
+      drawTile(selectedTile, cx - w / 2, cy - size / 2, w, size)
+      tilesetImage.color = TINT_OPAQUE
+    }
+    if (flipT < FLIP_FRAMES) flipT++
+
+    // readout strip — position / tile / mode / zoom, nothing else
+    Draw.rect(0, 0, SCREEN_W, HUD_H, COLOR_HUD)
+    const what = editMode === 'tiles' ? `TILE ${cur_sprite}` : 'OBJ PLATFORM'
+    font.print(6, 3, `X${square_x} Y${square_y}  ${what}  Z${zoom}X`)
 
     if (inputArmed && pad.start) {
       firstFrame = true

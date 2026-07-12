@@ -94,6 +94,8 @@ export class LevelEditorScene extends Phaser.Scene {
       mode: 'SHIFT',
       save: 'S',
       exit: 'ESC',
+      zoomIn: 'PLUS',
+      zoomOut: 'MINUS',
     })) {
       this.keys.set(name, this.input.keyboard!.addKey(code))
     }
@@ -101,6 +103,7 @@ export class LevelEditorScene extends Phaser.Scene {
     const pads: PadSource = {
       held: (mask) => this.held.has(mask),
       fresh: (mask) => this.fresh.has(mask),
+      axis: (name) => (name === 'ly' ? this.zoomAxis() : 0),
     }
 
     const { host, destroy } = createPhaserHost({
@@ -108,7 +111,8 @@ export class LevelEditorScene extends Phaser.Scene {
       screen: SCREEN,
       pads,
       resolveTexture: () => this.textureKey,
-      resolveFont: () => ({ key: 'font' }),
+      // the SML font's native size is 72px — render the readout GB-small
+      resolveFont: () => ({ key: 'font', size: 16 }),
     })
     this.destroyHost = destroy
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyHost())
@@ -155,53 +159,35 @@ export class LevelEditorScene extends Phaser.Scene {
 
   /** Merge gamepad / touch / keyboard into PS2 button-mask sets, once per frame. */
   private snapshotInput(): void {
-    this.held.clear()
+    // edges are derived from the previous snapshot, so every source (pad,
+    // touch, keyboard) gets identical fresh semantics
+    const prev = this.held
+    this.held = new Set()
     this.fresh.clear()
 
     const key = (name: string) => this.keys.get(name)!
-    const set = (mask: number, heldNow: boolean, freshNow: boolean) => {
-      if (heldNow) this.held.add(mask)
-      if (freshNow) this.fresh.add(mask)
+    const set = (mask: number, heldNow: boolean) => {
+      if (!heldNow) return
+      this.held.add(mask)
+      if (!prev.has(mask)) this.fresh.add(mask)
     }
 
+    // directions read the d-pad buttons only — the analog stick's Y axis is
+    // the editor's zoom control (SNES-style axes-as-d-pad pads still move)
     const dir = (mask: number, action: 'up' | 'down' | 'left' | 'right', k: string) =>
-      set(
-        mask,
-        gamepad.isDown(action) || touch.isDown(action) || key(k).isDown,
-        gamepad.justPressed(action) || touch.justPressed(action) || Phaser.Input.Keyboard.JustDown(key(k))
-      )
+      set(mask, gamepad.dpadIsDown(action) || touch.isDown(action) || key(k).isDown)
 
     dir(MASK.UP, 'up', 'up')
     dir(MASK.DOWN, 'down', 'down')
     dir(MASK.LEFT, 'left', 'left')
     dir(MASK.RIGHT, 'right', 'right')
 
-    set(
-      MASK.CROSS,
-      gamepad.isDown('jump') || touch.isDown('jump') || key('place').isDown,
-      gamepad.justPressed('jump') || touch.justPressed('jump') || Phaser.Input.Keyboard.JustDown(key('place'))
-    )
-    set(
-      MASK.SQUARE,
-      gamepad.isDown('run') || touch.isDown('run') || key('prev').isDown,
-      gamepad.justPressed('run') || touch.justPressed('run') || Phaser.Input.Keyboard.JustDown(key('prev'))
-    )
+    set(MASK.CROSS, gamepad.isDown('jump') || touch.isDown('jump') || key('place').isDown)
+    set(MASK.SQUARE, gamepad.isDown('run') || touch.isDown('run') || key('prev').isDown)
     // TRIANGLE has no mapped action — read the raw top face button (SNES X)
-    set(
-      MASK.TRIANGLE,
-      gamepad.buttonIsDown(BUTTON_INDEXES.FACE_TOP) || key('next').isDown,
-      gamepad.buttonJustPressed(BUTTON_INDEXES.FACE_TOP) || Phaser.Input.Keyboard.JustDown(key('next'))
-    )
-    set(
-      MASK.SELECT,
-      gamepad.isDown('select') || touch.isDown('select') || key('mode').isDown,
-      gamepad.justPressed('select') || touch.justPressed('select') || Phaser.Input.Keyboard.JustDown(key('mode'))
-    )
-    set(
-      MASK.START,
-      gamepad.isDown('start') || touch.isDown('start') || key('save').isDown,
-      gamepad.justPressed('start') || touch.justPressed('start') || Phaser.Input.Keyboard.JustDown(key('save'))
-    )
+    set(MASK.TRIANGLE, gamepad.buttonIsDown(BUTTON_INDEXES.FACE_TOP) || key('next').isDown)
+    set(MASK.SELECT, gamepad.isDown('select') || touch.isDown('select') || key('mode').isDown)
+    set(MASK.START, gamepad.isDown('start') || touch.isDown('start') || key('save').isDown)
 
     // SELECT+START = discard & exit — intercept it so the editor never sees
     // the START edge as a save
@@ -210,6 +196,13 @@ export class LevelEditorScene extends Phaser.Scene {
       this.fresh.delete(MASK.START)
       this.held.delete(MASK.START)
     }
+  }
+
+  /** Analog Y for the editor's zoom — the left stick on standard pads, +/- on keyboard. */
+  private zoomAxis(): number {
+    if (this.keys.get('zoomIn')!.isDown) return -1
+    if (this.keys.get('zoomOut')!.isDown) return 1
+    return gamepad.leftStickY()
   }
 
   private saveAndPlay(spawnPos: { x: number; y: number }): void {

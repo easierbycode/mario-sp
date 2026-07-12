@@ -6,14 +6,13 @@ export default defineConfig({
   server: process.env.PORT ? { port: Number(process.env.PORT) } : undefined,
   plugins: [svelte()],
   resolve: {
-    // svelte-phaser and 5velte-ps2 are consumed from source (github:/file:
-    // dependencies) — make sure they share this app's phaser and svelte
-    // instances
+    // 5velte-ph4ser and 5velte-ps2 are consumed from raw TS source — make
+    // sure they share this app's phaser and svelte instances
     dedupe: ['phaser', 'svelte'],
   },
   optimizeDeps: {
     // their raw .ts/.svelte.ts source must go through the Svelte plugin /
     // vite pipeline, not esbuild prebundling
-    exclude: ['svelte-phaser', '5velte-ps2'],
+    exclude: ['5velte-ph4ser', '5velte-ps2'],
   },
 })

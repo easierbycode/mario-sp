@@ -1,6 +1,6 @@
 <script lang="ts">
   import Phaser from 'phaser'
-  import { Game } from 'svelte-phaser'
+  import { Game } from '5velte-ph4ser'
   import { GAME_HEIGHT, GAME_WIDTH, physics, scenes } from '../game/config'
   import GamepadPoller from './GamepadPoller.svelte'
   import TouchControls from './TouchControls.svelte'

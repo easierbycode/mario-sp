@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onGameEvent } from 'svelte-phaser'
+  import { onGameEvent } from '5velte-ph4ser'
   import { gamepad } from '../lib/gamepad.svelte'
   import { touch } from '../lib/touch.svelte'
 

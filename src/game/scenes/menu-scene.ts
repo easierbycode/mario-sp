@@ -7,7 +7,10 @@ import Constants from '../constants'
 
 export class MenuScene extends Phaser.Scene {
   private startKey: Phaser.Input.Keyboard.Key
+  private selectKey: Phaser.Input.Keyboard.Key
+  private upKey: Phaser.Input.Keyboard.Key
   private bitmapTexts: Phaser.GameObjects.BitmapText[] = []
+  private skinPreview: Phaser.GameObjects.Sprite
 
   constructor() {
     super({
@@ -20,6 +23,12 @@ export class MenuScene extends Phaser.Scene {
       Phaser.Input.Keyboard.KeyCodes.S
     )
     this.startKey.isDown = false
+    this.selectKey = this.input.keyboard.addKey(
+      gamepad.keyFor('select') ?? 'SHIFT'
+    )
+    this.selectKey.isDown = false
+    this.upKey = this.input.keyboard.addKey(gamepad.keyFor('up') ?? 'UP')
+    this.upKey.isDown = false
     this.initGlobalDataManager()
   }
 
@@ -35,9 +44,35 @@ export class MenuScene extends Phaser.Scene {
         8
       )
     )
+
+    // SELECT swaps mario for his SML2 space suit — preview him on the
+    // title's ground band
+    this.skinPreview = this.add
+      .sprite(this.sys.canvas.width / 2, 136, 'mario', 0)
+      .setOrigin(0.5, 1)
+    this.updateSkinPreview()
   }
 
   update(): void {
+    // SELECT + UP together (either order) toggles the space suit
+    const selectFresh =
+      Phaser.Input.Keyboard.JustDown(this.selectKey) ||
+      gamepad.justPressed('select') ||
+      touch.justPressed('select')
+    const upFresh =
+      Phaser.Input.Keyboard.JustDown(this.upKey) ||
+      gamepad.justPressed('up') ||
+      touch.justPressed('up')
+    const selectHeld =
+      this.selectKey.isDown || gamepad.isDown('select') || touch.isDown('select')
+    const upHeld = this.upKey.isDown || gamepad.isDown('up') || touch.isDown('up')
+    if (selectHeld && upHeld && (selectFresh || upFresh)) {
+      const next =
+        this.registry.get('skin') === 'space' ? 'classic' : 'space'
+      this.registry.set('skin', next)
+      this.updateSkinPreview()
+    }
+
     if (
       this.startKey.isDown ||
       gamepad.justPressed('start') ||
@@ -51,6 +86,14 @@ export class MenuScene extends Phaser.Scene {
       this.scene.start('HUDScene')
       this.scene.start('GameScene')
       this.scene.bringToTop('HUDScene')
+    }
+  }
+
+  private updateSkinPreview(): void {
+    if (this.registry.get('skin') === 'space') {
+      this.skinPreview.setTexture('space-mario', 'atlas_s0')
+    } else {
+      this.skinPreview.setTexture('mario', 0)
     }
   }
 
@@ -73,6 +116,10 @@ export class MenuScene extends Phaser.Scene {
   private initGlobalDataManager(): void {
     this.registry.set('time', 400)
     this.registry.set('level', 'level1')
+    // the SELECT skin choice survives game overs — only seed the default
+    if (!this.registry.has('skin')) {
+      this.registry.set('skin', 'classic')
+    }
 
     const { physics, physicsScale, spawn } = this.levelOpts(this.registry.get('level'))
 

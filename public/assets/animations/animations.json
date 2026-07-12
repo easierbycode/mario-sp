@@ -23,6 +23,26 @@
       "frameRate": 18
     },
     {
+      "key": "smallSpaceMarioWalk",
+      "frames": [
+        { "key": "space-mario", "frame": "atlas_s3" },
+        { "key": "space-mario", "frame": "atlas_s0" },
+        { "key": "space-mario", "frame": "atlas_s4" },
+        { "key": "space-mario", "frame": "atlas_s0" }
+      ],
+      "repeat": -1,
+      "frameRate": 18
+    },
+    {
+      "key": "bigSpaceMarioWalk",
+      "frames": [
+        { "key": "space-mario", "frame": "atlas_s8" },
+        { "key": "space-mario", "frame": "atlas_s9" }
+      ],
+      "repeat": -1,
+      "frameRate": 9
+    },
+    {
       "key": "rotatingCoin",
       "frames": {
         "typeOfGeneration": "generateFrameNumbers",

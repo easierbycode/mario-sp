@@ -240,10 +240,10 @@
       <div class="pill-group">
         <span
           role="presentation"
-          class="pill {pressed.fullscreen ? 'on' : ''}"
-          onpointerdown={pillDown('fullscreen')}
-          onpointerup={pillUp('fullscreen')}
-          onpointercancel={pillUp('fullscreen')}
+          class="pill {pressed.select ? 'on' : ''}"
+          onpointerdown={pillDown('select')}
+          onpointerup={pillUp('select')}
+          onpointercancel={pillUp('select')}
         ></span>
         <span class="pill-label">SELECT</span>
       </div>

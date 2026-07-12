@@ -57,6 +57,12 @@
         }
       },
       {
+        "type": "atlas",
+        "key": "space-mario",
+        "textureURL": "./assets/tiles/space-mario.png",
+        "atlasURL": "./assets/tiles/space-mario.json"
+      },
+      {
         "type": "spritesheet",
         "key": "box",
         "url": "./assets/sprites/box.png",

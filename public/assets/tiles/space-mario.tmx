@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.0" orientation="orthogonal" renderorder="right-down" width="10" height="1" tilewidth="32" tileheight="32" nextobjectid="1"><tileset firstgid="1" name="space-mario" tilewidth="32" tileheight="32"><image source="space-mario.png" width="320" height="32"/></tileset><layer name="layer" width="10" height="1"><data><tile gid="1"/><tile gid="2"/><tile gid="3"/><tile gid="4"/><tile gid="5"/><tile gid="6"/><tile gid="7"/><tile gid="8"/><tile gid="9"/><tile gid="10"/></data></layer></map>

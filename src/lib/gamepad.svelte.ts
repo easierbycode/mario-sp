@@ -16,6 +16,7 @@ export type GamepadAction =
   | 'jump'
   | 'run'
   | 'start'
+  | 'select'
   | 'fullscreen'
 
 const ACTIONS: GamepadAction[] = [
@@ -26,6 +27,7 @@ const ACTIONS: GamepadAction[] = [
   'jump',
   'run',
   'start',
+  'select',
   'fullscreen',
 ]
 
@@ -84,6 +86,7 @@ const DEFAULT_BUTTON_MAP: Record<number, GamepadAction> = {
   [BUTTON_INDEXES.FACE_BOTTOM]: 'jump',
   [BUTTON_INDEXES.FACE_LEFT]: 'run',
   [BUTTON_INDEXES.START]: 'start',
+  [BUTTON_INDEXES.SELECT]: 'select',
   [BUTTON_INDEXES.HOME]: 'fullscreen',
 }
 
@@ -96,6 +99,7 @@ const DEFAULT_KEYBOARD_MAP: Partial<Record<GamepadAction, string>> = {
   jump: 'SPACE',
   run: 'C',
   start: 'S',
+  select: 'SHIFT',
   fullscreen: 'F',
 }
 

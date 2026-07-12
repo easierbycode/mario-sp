@@ -63,7 +63,7 @@
   <GameCanvas bind:this={gameCanvas} />
   {#if keyboardOnly}
     <p class="controls">
-      ←/→ move · ↓ duck · SPACE jump · C run · S start · F fullscreen
+      ←/→ move · ↓ duck · SPACE jump · C run · S start · SHIFT+↑ suit · F fullscreen
     </p>
   {/if}
 </main>

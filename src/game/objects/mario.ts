@@ -21,12 +21,43 @@ const SMA4 = {
   SKID_DECELERATION: 7.5,
 }
 
+// per-skin sprite data. The classic sheet uses numeric 16x16 frames; the
+// space-suit skin (SML2 Space Zone) is a 32x32 atlas with named frames, so
+// its physics bodies keep the classic sizes but re-anchor to the bigger
+// frame's bottom center (feet sit on the frame's last row)
+type MarioSkin = 'classic' | 'space'
+const SKINS = {
+  classic: {
+    texture: 'mario',
+    walkAnim: 'MarioWalk',
+    small: { stand: 0, jump: 4, skid: 5 },
+    big: { stand: 6, jump: 10, skid: 11, crouch: 13 },
+    die: 12,
+    body: {
+      small: { width: 6, height: 12, x: 6, y: 4 },
+      big: { width: 8, height: 16, x: 4, y: 0 },
+    },
+  },
+  space: {
+    texture: 'space-mario',
+    walkAnim: 'SpaceMarioWalk',
+    small: { stand: 'atlas_s0', jump: 'atlas_s2', skid: 'atlas_s5' },
+    big: { stand: 'atlas_s8', jump: 'atlas_s7', skid: 'atlas_s5', crouch: 'atlas_s1' },
+    die: 'atlas_s1',
+    body: {
+      small: { width: 6, height: 12, x: 13, y: 20 },
+      big: { width: 8, height: 16, x: 12, y: 16 },
+    },
+  },
+} as const
+
 export class Mario extends Phaser.GameObjects.Sprite {
   declare body: Phaser.Physics.Arcade.Body
 
   // variables
   private currentScene: Phaser.Scene
   private marioSize: string
+  private skin: MarioSkin = 'classic'
   private acceleration: number = 0
   private isJumping: boolean
   private isDying: boolean
@@ -67,7 +98,13 @@ export class Mario extends Phaser.GameObjects.Sprite {
     this.isVulnerable = true
     this.vulnerableCounter = 100
 
-    // sprite
+    // sprite — the space-suit skin (toggled with SELECT on the title screen)
+    // swaps the texture; the scenes always construct with the classic sheet
+    this.skin =
+      this.currentScene.registry.get('skin') === 'space' ? 'space' : 'classic'
+    if (this.skin === 'space') {
+      this.setTexture(SKINS.space.texture, SKINS.space.small.stand)
+    }
     this.setOrigin(0.5, 0.5)
     this.setFlipX(false)
 
@@ -81,10 +118,14 @@ export class Mario extends Phaser.GameObjects.Sprite {
       ['run', this.addKey(gamepad.keyFor('run') ?? 'C')],
     ])
 
-    // physics
+    // physics — respawns (room changes) keep the registry's mario size
     this.physicsScale = this.currentScene.registry.get('physicsScale') ?? 1
     this.currentScene.physics.world.enable(this)
-    this.adjustPhysicBodyToSmallSize()
+    if (this.marioSize === 'big') {
+      this.adjustPhysicBodyToBigSize()
+    } else {
+      this.adjustPhysicBodyToSmallSize()
+    }
     this.body.maxVelocity.x = WALK_MAX_VELOCITY * this.physicsScale
     this.body.maxVelocity.y = 300 * this.physicsScale
   }
@@ -98,7 +139,7 @@ export class Mario extends Phaser.GameObjects.Sprite {
       this.handleInput()
       this.handleAnimations()
     } else {
-      this.setFrame(12)
+      this.setFrame(SKINS[this.skin].die)
       if (this.y > this.currentScene.physics.world.bounds.bottom) {
         this.currentScene.scene.stop('HUDScene')
         this.currentScene.scene.start('MenuScene')
@@ -256,13 +297,14 @@ export class Mario extends Phaser.GameObjects.Sprite {
   }
 
   private handleAnimations(): void {
+    const skin = SKINS[this.skin]
     if (this.body.velocity.y !== 0) {
       // mario is jumping or falling
       this.anims.stop()
       if (this.marioSize === 'small') {
-        this.setFrame(4)
+        this.setFrame(skin.small.jump)
       } else {
-        this.setFrame(10)
+        this.setFrame(skin.big.jump)
       }
     } else if (this.body.velocity.x !== 0) {
       // mario is moving horizontal
@@ -273,23 +315,23 @@ export class Mario extends Phaser.GameObjects.Sprite {
         (this.body.velocity.x > 0 && this.body.acceleration.x < 0)
       ) {
         if (this.marioSize === 'small') {
-          this.setFrame(5)
+          this.setFrame(skin.small.skid)
         } else {
-          this.setFrame(11)
+          this.setFrame(skin.big.skid)
         }
       }
 
-      this.anims.play(this.marioSize + 'MarioWalk', true)
+      this.anims.play(this.marioSize + skin.walkAnim, true)
     } else {
       // mario is standing still
       this.anims.stop()
       if (this.marioSize === 'small') {
-        this.setFrame(0)
+        this.setFrame(skin.small.stand)
       } else {
         if (this.actionIsDown('down')) {
-          this.setFrame(13)
+          this.setFrame(skin.big.crouch)
         } else {
-          this.setFrame(6)
+          this.setFrame(skin.big.stand)
         }
       }
     }
@@ -308,13 +350,15 @@ export class Mario extends Phaser.GameObjects.Sprite {
   }
 
   private adjustPhysicBodyToSmallSize(): void {
-    this.body.setSize(6, 12)
-    this.body.setOffset(6, 4)
+    const body = SKINS[this.skin].body.small
+    this.body.setSize(body.width, body.height)
+    this.body.setOffset(body.x, body.y)
   }
 
   private adjustPhysicBodyToBigSize(): void {
-    this.body.setSize(8, 16)
-    this.body.setOffset(4, 0)
+    const body = SKINS[this.skin].body.big
+    this.body.setSize(body.width, body.height)
+    this.body.setOffset(body.x, body.y)
   }
 
   public bounceUpAfterHitEnemyOnHead(): void {

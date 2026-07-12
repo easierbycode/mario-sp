@@ -12,6 +12,7 @@
 import Phaser from 'phaser'
 import { createRuntime, type PS2Runtime, type PS2ImageInstance } from '5velte-ps2'
 import { createPhaserHost, type PadSource } from '5velte-ps2/phaser'
+import { consumeEditorRequest } from '../../lib/cmg'
 import { gamepad, BUTTON_INDEXES } from '../../lib/gamepad.svelte'
 import { touch } from '../../lib/touch.svelte'
 import { saveRtdbMap } from '../../lib/rtdb-maps'
@@ -55,6 +56,8 @@ export class LevelEditorScene extends Phaser.Scene {
   private keys = new Map<string, Phaser.Input.Keyboard.Key>()
   private held = new Set<number>()
   private fresh = new Set<number>()
+  /** SELECT+START — leave without saving (works on pad, touch, and keyboard) */
+  private discardRequested = false
 
   constructor() {
     super({ key: 'LevelEditorScene' })
@@ -130,8 +133,14 @@ export class LevelEditorScene extends Phaser.Scene {
   update(): void {
     this.snapshotInput()
 
-    // leave without saving: the same chord that opened the editor, or ESC
-    if (gamepad.justPressed('editor') || Phaser.Input.Keyboard.JustDown(this.keys.get('exit')!)) {
+    // a CMG OSD "Level Editor" press while already editing shouldn't queue
+    // up a re-open for after we exit — drain it
+    consumeEditorRequest()
+
+    // leave without saving: SELECT+START, or ESC. (SELECT+UP is NOT an exit
+    // chord — SELECT toggles the edit mode and UP moves the cursor, so that
+    // combination occurs naturally while editing.)
+    if (this.discardRequested || Phaser.Input.Keyboard.JustDown(this.keys.get('exit')!)) {
       this.exitEditor(false)
       return
     }
@@ -193,6 +202,14 @@ export class LevelEditorScene extends Phaser.Scene {
       gamepad.isDown('start') || touch.isDown('start') || key('save').isDown,
       gamepad.justPressed('start') || touch.justPressed('start') || Phaser.Input.Keyboard.JustDown(key('save'))
     )
+
+    // SELECT+START = discard & exit — intercept it so the editor never sees
+    // the START edge as a save
+    this.discardRequested = this.held.has(MASK.SELECT) && this.fresh.has(MASK.START)
+    if (this.held.has(MASK.SELECT)) {
+      this.fresh.delete(MASK.START)
+      this.held.delete(MASK.START)
+    }
   }
 
   private saveAndPlay(spawnPos: { x: number; y: number }): void {
@@ -206,14 +223,22 @@ export class LevelEditorScene extends Phaser.Scene {
       data: this.level,
     })
 
-    // persist to the RTDB alongside the atlas records (fire-and-forget)
-    saveRtdbMap(this.levelKey, this.level, this.tilesetDataURL()).then((ok) =>
+    // persist to the RTDB alongside the atlas records (fire-and-forget);
+    // if the network write fails, keep a local backup so the edits survive
+    const level = this.level
+    const levelKey = this.levelKey
+    saveRtdbMap(levelKey, level, this.tilesetDataURL()).then((ok) => {
+      if (!ok) {
+        try {
+          localStorage.setItem(`mario-sp:map-backup:${levelKey}`, JSON.stringify(level))
+        } catch {}
+      }
       console.log(
         ok
-          ? `🗺️ map saved to RTDB: maps/${this.levelKey}`
-          : `🗺️ RTDB save failed for maps/${this.levelKey} (map still plays from the local cache)`
+          ? `🗺️ map saved to RTDB: maps/${levelKey}`
+          : `🗺️ RTDB save failed for maps/${levelKey} — backup kept in localStorage (map still plays from the local cache)`
       )
-    )
+    })
 
     this.registry.set('spawn', {
       x: spawnPos.x,

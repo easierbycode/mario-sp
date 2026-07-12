@@ -59,6 +59,10 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
   let editMode: 'tiles' | 'objects' = 'tiles'
   let firstFrame = true
   let moveHeldFrames = 0
+  // the SELECT+UP chord that opened the editor is usually still held on the
+  // first frames — ignore input until the pad goes neutral once, so the
+  // cursor doesn't march away and the mode doesn't toggle on entry
+  let inputArmed = false
 
   let TILES: Array<{ id: number; x: number; y: number }> = []
 
@@ -71,10 +75,12 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
   const COLOR_CURSOR = Color.new(255, 0, 0, 64)
 
   function initializeTileList() {
+    // honor margin/spacing — the Vegas castle tileset is extruded (1px
+    // margin, 2px spacing); the PS2 original assumed 0/0
     TILES = []
     for (let i = 0; i < ts.tilecount; i++) {
-      const x = (i % ts.columns) * ts.tileWidth
-      const y = Math.floor(i / ts.columns) * ts.tileHeight
+      const x = ts.margin + (i % ts.columns) * (ts.tileWidth + ts.spacing)
+      const y = ts.margin + Math.floor(i / ts.columns) * (ts.tileHeight + ts.spacing)
       TILES.push({ id: i, x, y })
     }
   }
@@ -159,7 +165,12 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
     }
 
     const pad = poll(ps2)
-    updatePads(pad)
+    if (!inputArmed) {
+      inputArmed =
+        !pad.left && !pad.right && !pad.up && !pad.down && !pad.select && !pad.start
+    } else {
+      updatePads(pad)
+    }
 
     const camX = square_x * TILE_SIZE - VIEW_W / 2 + TILE_SIZE / 2
     const camY = square_y * TILE_SIZE - VIEW_H / 2 + TILE_SIZE / 2
@@ -210,6 +221,7 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
     font.print(460, 165, `CURSOR ${square_x},${square_y}`)
     font.print(460, 195, `TILE ID ${cur_sprite}`)
     font.print(460, 225, `MODE ${editMode.toUpperCase()}`)
+    font.print(460, 405, 'SEL+START - EXIT')
 
     // selected-tile preview
     const selectedTile = TILES[cur_sprite]
@@ -222,7 +234,7 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
       tilesetImage.draw(470, 250, 150, 150)
     }
 
-    if (pad.start) {
+    if (inputArmed && pad.start) {
       firstFrame = true
       return {
         nextState: 'load_new_level',

@@ -41,6 +41,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   init(): void {
+    // scene instances persist across restart() — clear the previous run's
+    // objects so update()'s readiness guard holds while create() is waiting
+    // on an RTDB map import
+    this.player = undefined
+    this.map = undefined
+
     if (this.registry.get("level") === undefined) {
       Mario.initGlobalDataManager(this);
       this.currentLevel = this.registry.get("level");
@@ -63,8 +69,12 @@ export class GameScene extends Phaser.Scene {
     const key = this.registry.get('level')
 
     // maps not shipped in pack.json (e.g. ?map=<key>) are imported from the
-    // RTDB, then the scene restarts with the cache populated
-    if (!this.cache.tilemap.exists(key)) {
+    // RTDB, then the scene restarts with the cache populated. An explicit
+    // ?map= request also wins over a shipped map of the same name, so edits
+    // saved to /maps/level1 are actually reachable.
+    const rtdbRequested =
+      this.registry.get('rtdbMap') === key && !this.registry.get('rtdbMapLoaded')
+    if (!this.cache.tilemap.exists(key) || rtdbRequested) {
       this.loadMapFromRtdb(key)
       return
     }
@@ -255,40 +265,123 @@ export class GameScene extends Phaser.Scene {
     if (!this.scene.isActive()) return
     loading.destroy()
 
-    if (!record) {
-      console.warn(`🗺️ map "${key}" not found in RTDB — falling back to level1`)
+    const fallback = (reason: string) => {
+      console.warn(`🗺️ ${reason} — falling back to level1`)
+      // don't retry the RTDB copy of this key on the next create
+      this.registry.set('rtdbMapLoaded', true)
       this.registry.set('level', 'level1')
       this.registry.set('world', '1-1')
       this.scene.restart()
+    }
+
+    if (!record) {
+      fallback(`map "${key}" not found in RTDB`)
       return
     }
 
-    this.cache.tilemap.add(key, {
-      format: Phaser.Tilemaps.Formats.TILED_JSON,
-      data: record.json,
-    })
-
-    // spawn where the map's player object sits (Tiled anchors objects at
-    // the bottom-left)
-    const objectLayer = record.json.layers?.find((l: any) => l.type === 'objectgroup')
-    const playerObject = objectLayer?.objects?.find(
-      (o: any) => o.type === 'player' || o.name === 'player'
-    )
-    if (playerObject) {
-      this.registry.set('spawn', {
-        x: playerObject.x,
-        y: playerObject.y - (playerObject.height ?? 0),
-        dir: 'down',
-      })
+    // only embedded-tileset, uncompressed maps are playable here
+    const json = record.json
+    const tileLayer = json.layers?.find((l: any) => l.type === 'tilelayer')
+    const tileset = json.tilesets?.[0]
+    if (
+      !tileLayer ||
+      !tileset ||
+      tileset.source ||
+      json.layers.some((l: any) => l.compression)
+    ) {
+      fallback(`map "${key}" needs an embedded tileset and uncompressed layers`)
+      return
     }
+
+    // GameScene requires an 'objects' layer and a player object — synthesize
+    // them for maps authored without either
+    let objectLayer = json.layers.find(
+      (l: any) => l.type === 'objectgroup' && l.name === 'objects'
+    )
+    if (!objectLayer) {
+      objectLayer = {
+        draworder: 'topdown',
+        name: 'objects',
+        objects: [],
+        opacity: 1,
+        type: 'objectgroup',
+        visible: true,
+        x: 0,
+        y: 0,
+      }
+      json.layers.push(objectLayer)
+    }
+    let playerObject = json.layers
+      .filter((l: any) => l.type === 'objectgroup')
+      .flatMap((l: any) => l.objects ?? [])
+      .find((o: any) => o.type === 'player' || o.name === 'player')
+    if (!playerObject) {
+      playerObject = {
+        id: (json.nextobjectid = (json.nextobjectid ?? 1) + 1),
+        name: 'player',
+        type: 'player',
+        x: (json.tilewidth ?? 8) * 2,
+        y: (json.tileheight ?? 8) * 5,
+        width: 8,
+        height: 14,
+        rotation: 0,
+        visible: true,
+      }
+      objectLayer.objects.push(playerObject)
+    }
+
+    // spawn where the player object sits (Tiled anchors objects bottom-left)
+    this.registry.set('spawn', {
+      x: playerObject.x,
+      y: playerObject.y - (playerObject.height ?? 0),
+      dir: 'down',
+    })
+    // imported maps get the GB feel, scaled up for 16px tiles
+    this.registry.set('physics', 'gb')
+    this.registry.set('physicsScale', (json.tilewidth ?? 8) >= 16 ? 2 : 1)
     this.registry.set('world', key)
 
-    if (record.png && !this.textures.exists(`map-${key}`)) {
-      this.textures.once(`addtexture-map-${key}`, () => this.scene.restart())
-      this.textures.addBase64(`map-${key}`, record.png)
-    } else {
+    const finalize = () => {
+      if (this.cache.tilemap.exists(key)) this.cache.tilemap.remove(key)
+      this.cache.tilemap.add(key, {
+        format: Phaser.Tilemaps.Formats.TILED_JSON,
+        data: json,
+      })
+      if (this.registry.get('rtdbMap') === key) this.registry.set('rtdbMapLoaded', true)
       this.scene.restart()
     }
+
+    if (!record.png) {
+      // no tileset PNG stored — playable only via the built-in textures
+      finalize()
+      return
+    }
+
+    // (re)decode the stored tileset — replace any stale texture from an
+    // earlier version of this map
+    const textureKey = `map-${key}`
+    if (this.textures.exists(textureKey)) this.textures.remove(textureKey)
+
+    const onAdd = () => {
+      cleanup()
+      finalize()
+    }
+    const onError = (failedKey: unknown) => {
+      const keys = Array.isArray(failedKey) ? failedKey : [failedKey]
+      if (!keys.includes(textureKey)) return
+      cleanup()
+      fallback(`tileset PNG for "${key}" failed to decode`)
+    }
+    const cleanup = () => {
+      this.textures.off(`addtexture-${textureKey}`, onAdd)
+      this.textures.off(Phaser.Textures.Events.ERROR, onError)
+      this.events.off(Phaser.Scenes.Events.SHUTDOWN, cleanup)
+    }
+    // the TextureManager outlives this scene — never leave these behind
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup)
+    this.textures.once(`addtexture-${textureKey}`, onAdd)
+    this.textures.on(Phaser.Textures.Events.ERROR, onError)
+    this.textures.addBase64(textureKey, record.png)
   }
 
   private loadObjectsFromTilemap(): void {

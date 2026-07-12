@@ -5,7 +5,11 @@
 // frame when the player activates it. Capabilities are cleared on every
 // game launch, so this must run on each boot.
 
-let editorRequested = false
+// timestamp of the last OSD activation — consumed with a short TTL so a
+// press latched while the game was at the title (or while the editor was
+// already open) doesn't surprise-open the editor much later
+let requestedAt = 0
+const REQUEST_TTL_MS = 3000
 
 export function initCmgActions(): () => void {
   if (typeof window === 'undefined' || window.parent === window) return () => {}
@@ -14,7 +18,7 @@ export function initCmgActions(): () => void {
     const data = event.data
     // the launcher posts with targetOrigin '*' — match on shape only
     if (data && data.type === 'cmg-action' && data.id === 'level-editor') {
-      editorRequested = true
+      requestedAt = performance.now()
     }
   }
   window.addEventListener('message', onMessage)
@@ -31,9 +35,9 @@ export function initCmgActions(): () => void {
   return () => window.removeEventListener('message', onMessage)
 }
 
-/** True once per OSD activation — GameScene polls this from update(). */
+/** True once per recent OSD activation — GameScene polls this from update(). */
 export function consumeEditorRequest(): boolean {
-  const requested = editorRequested
-  editorRequested = false
-  return requested
+  const fresh = requestedAt > 0 && performance.now() - requestedAt < REQUEST_TTL_MS
+  requestedAt = 0
+  return fresh
 }

@@ -126,6 +126,10 @@ export class MenuScene extends Phaser.Scene {
         ? new URLSearchParams(window.location.search).get('map')
         : null
     this.registry.set('level', urlMap || 'level1')
+    // an explicit ?map= request loads the RTDB copy even when a shipped map
+    // shares the key (that's how edited built-in levels are played back)
+    this.registry.set('rtdbMap', urlMap || null)
+    this.registry.set('rtdbMapLoaded', false)
     // the SELECT skin choice survives game overs — only seed the default
     if (!this.registry.has('skin')) {
       this.registry.set('skin', 'classic')

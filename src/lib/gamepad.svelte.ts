@@ -188,9 +188,14 @@ class GamepadState {
     return best
   }
 
-  /** SNES-style pads report the d-pad on the axes and have no analog stick. */
+  /**
+   * Pads whose d-pad reports on the axes: SNES-style adapters, and any pad
+   * without the standard mapping — on those we can't trust axes 0/1 to be
+   * an analog stick (DirectInput adapters put the d-pad there regardless
+   * of how many buttons they expose).
+   */
   #dpadOnAxes(pad: Gamepad): boolean {
-    return /snes/i.test(pad.id) || pad.buttons.length <= BUTTON_INDEXES.DPAD_UP
+    return pad.mapping !== 'standard' || /snes/i.test(pad.id)
   }
 
   /** True only on the poll where the raw button went down. */

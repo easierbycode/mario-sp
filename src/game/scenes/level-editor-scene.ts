@@ -94,8 +94,9 @@ export class LevelEditorScene extends Phaser.Scene {
       mode: 'SHIFT',
       save: 'S',
       exit: 'ESC',
-      zoomIn: 'PLUS',
-      zoomOut: 'MINUS',
+      // brackets, not +/- — typing '+' needs SHIFT, which is the mode key
+      zoomIn: 'CLOSED_BRACKET',
+      zoomOut: 'OPEN_BRACKET',
     })) {
       this.keys.set(name, this.input.keyboard!.addKey(code))
     }
@@ -198,7 +199,7 @@ export class LevelEditorScene extends Phaser.Scene {
     }
   }
 
-  /** Analog Y for the editor's zoom — the left stick on standard pads, +/- on keyboard. */
+  /** Analog Y for the editor's zoom — the left stick on standard pads, ]/[ on keyboard. */
   private zoomAxis(): number {
     if (this.keys.get('zoomIn')!.isDown) return -1
     if (this.keys.get('zoomOut')!.isDown) return 1

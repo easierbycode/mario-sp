@@ -76,6 +76,7 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
   let zoomFrom = 1
   let flipT = FLIP_FRAMES
   let zoomHeldFrames = 0
+  let lastZoomDir = 0
 
   let TILES: Array<{ id: number; x: number; y: number }> = []
 
@@ -124,9 +125,11 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
       if (pad.down && square_y < level.height - 1) square_y++
     }
 
-    // analog up/down: step the zoom ghost (up = closer)
+    // analog up/down: step the zoom ghost (up = closer); a direction flip
+    // resets the repeat clock so the reversal steps immediately
     const zoomDir = pad.ly < -AXIS_ON ? 1 : pad.ly > AXIS_ON ? -1 : 0
-    zoomHeldFrames = zoomDir === 0 ? 0 : zoomHeldFrames + 1
+    zoomHeldFrames = zoomDir !== 0 && zoomDir === lastZoomDir ? zoomHeldFrames + 1 : zoomDir !== 0 ? 1 : 0
+    lastZoomDir = zoomDir
     if (zoomDir !== 0 && (zoomHeldFrames === 1 || zoomHeldFrames % ZOOM_REPEAT === 0)) {
       const next = Math.max(1, Math.min(ZOOM_MAX, zoom + zoomDir))
       if (next !== zoom) {

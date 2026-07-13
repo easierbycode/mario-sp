@@ -22,7 +22,7 @@ export interface PadState {
   boostPressed: boolean
   start: boolean
   select: boolean
-  /** left-stick Y, AthenaEnv range (-127..127, up negative) */
+  /** left-stick Y, AthenaEnv range (-127..128, up negative) */
   ly: number
 }
 

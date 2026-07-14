@@ -32,6 +32,7 @@ const MASK = {
   DOWN: 0x0040,
   LEFT: 0x0080,
   TRIANGLE: 0x1000,
+  CIRCLE: 0x2000,
   CROSS: 0x4000,
   SQUARE: 0x8000,
 } as const
@@ -91,6 +92,8 @@ export class LevelEditorScene extends Phaser.Scene {
       place: 'SPACE',
       prev: 'C',
       next: 'X',
+      // "B" — cycle tiles up; hold with place (A) to cycle down
+      circle: 'B',
       mode: 'SHIFT',
       save: 'S',
       exit: 'ESC',
@@ -187,6 +190,8 @@ export class LevelEditorScene extends Phaser.Scene {
     set(MASK.SQUARE, gamepad.isDown('run') || touch.isDown('run') || key('prev').isDown)
     // TRIANGLE has no mapped action — read the raw top face button (SNES X)
     set(MASK.TRIANGLE, gamepad.buttonIsDown(BUTTON_INDEXES.FACE_TOP) || key('next').isDown)
+    // "B" — CIRCLE / face-right has no mapped action; read the raw button
+    set(MASK.CIRCLE, gamepad.buttonIsDown(BUTTON_INDEXES.FACE_RIGHT) || key('circle').isDown)
     set(MASK.SELECT, gamepad.isDown('select') || touch.isDown('select') || key('mode').isDown)
     set(MASK.START, gamepad.isDown('start') || touch.isDown('start') || key('save').isDown)
 

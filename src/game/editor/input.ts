@@ -13,6 +13,8 @@ export interface PadState {
   jump: boolean
   run: boolean
   boost: boolean
+  /** CIRCLE / face-right — the editor's "B": cycle tiles up, chord to cycle down */
+  circle: boolean
   leftPressed: boolean
   rightPressed: boolean
   upPressed: boolean
@@ -20,6 +22,7 @@ export interface PadState {
   jumpPressed: boolean
   runPressed: boolean
   boostPressed: boolean
+  circlePressed: boolean
   start: boolean
   select: boolean
   /** left-stick Y, AthenaEnv range (-127..128, up negative) */
@@ -37,6 +40,7 @@ export function poll(ps2: PS2Runtime): PadState {
     jump: pad.pressed(P.CROSS),
     run: pad.pressed(P.SQUARE),
     boost: pad.pressed(P.TRIANGLE),
+    circle: pad.pressed(P.CIRCLE),
     leftPressed: pad.justPressed(P.LEFT),
     rightPressed: pad.justPressed(P.RIGHT),
     upPressed: pad.justPressed(P.UP),
@@ -44,6 +48,7 @@ export function poll(ps2: PS2Runtime): PadState {
     jumpPressed: pad.justPressed(P.CROSS),
     runPressed: pad.justPressed(P.SQUARE),
     boostPressed: pad.justPressed(P.TRIANGLE),
+    circlePressed: pad.justPressed(P.CIRCLE),
     start: pad.justPressed(P.START),
     select: pad.justPressed(P.SELECT),
     ly: pad.ly,

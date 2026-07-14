@@ -6,6 +6,9 @@
 // original: D-pad move, CROSS/jump place, SQUARE/TRIANGLE cycle sprite,
 // SELECT toggles tiles/objects mode, START saves & plays.
 //
+// Added for the web build: B (CIRCLE) steps the selected tile forward;
+// holding B (or a locked/turbo B) while pressing A (CROSS) steps it back.
+//
 // Analog up/down steps a zoom preview (2x..8x): the selected tile grows
 // into a translucent ghost centered on the cursor, card-flipping through
 // each size change.
@@ -146,7 +149,17 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
       cur_sprite = (cur_sprite + 1) % TILES.length
     }
 
-    if (pad.jumpPressed) {
+    // B (CIRCLE): press to step the selected tile up. Holding B (or a
+    // locked/turbo B) turns A into "step down" instead of a place — so
+    // B alone cycles forward, B+A cycles back.
+    if (pad.circlePressed) {
+      cur_sprite = (cur_sprite + 1) % TILES.length
+    }
+    const bHeld = pad.circle
+
+    if (pad.jumpPressed && bHeld) {
+      cur_sprite = (cur_sprite - 1 + TILES.length) % TILES.length
+    } else if (pad.jumpPressed) {
       if (editMode === 'tiles') {
         const selectedTile = TILES[cur_sprite]
         if (selectedTile) {

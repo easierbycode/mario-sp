@@ -151,37 +151,40 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
 
     // B (CIRCLE): press to step the selected tile up. Holding B (or a
     // locked/turbo B) turns A into "step down" instead of a place — so
-    // B alone cycles forward, B+A cycles back.
-    if (pad.circlePressed) {
-      cur_sprite = (cur_sprite + 1) % TILES.length
-    }
+    // B alone cycles forward, B+A cycles back. Check the chord first so a
+    // same-frame B+A steps down once, rather than the up-then-down canceling.
     const bHeld = pad.circle
 
     if (pad.jumpPressed && bHeld) {
       cur_sprite = (cur_sprite - 1 + TILES.length) % TILES.length
-    } else if (pad.jumpPressed) {
-      if (editMode === 'tiles') {
-        const selectedTile = TILES[cur_sprite]
-        if (selectedTile) {
-          const tileIndex = square_y * level.width + square_x
-          fgData[tileIndex] = ts.firstgid + selectedTile.id
+    } else {
+      if (pad.circlePressed) {
+        cur_sprite = (cur_sprite + 1) % TILES.length
+      }
+      if (pad.jumpPressed) {
+        if (editMode === 'tiles') {
+          const selectedTile = TILES[cur_sprite]
+          if (selectedTile) {
+            const tileIndex = square_y * level.width + square_x
+            fgData[tileIndex] = ts.firstgid + selectedTile.id
+          }
+        } else {
+          const newObject = {
+            height: 5,
+            id: level.nextobjectid++,
+            name: 'platformMovingUpAndDown',
+            properties: { distance: 80 },
+            propertytypes: { distance: 'int' },
+            rotation: 0,
+            type: 'platformMovingUpAndDown',
+            visible: true,
+            width: 24,
+            x: square_x * TILE_SIZE,
+            y: square_y * TILE_SIZE,
+          }
+          const objectLayer = level.layers.find((l: any) => l.name === 'objects')
+          objectLayer.objects.push(newObject)
         }
-      } else {
-        const newObject = {
-          height: 5,
-          id: level.nextobjectid++,
-          name: 'platformMovingUpAndDown',
-          properties: { distance: 80 },
-          propertytypes: { distance: 'int' },
-          rotation: 0,
-          type: 'platformMovingUpAndDown',
-          visible: true,
-          width: 24,
-          x: square_x * TILE_SIZE,
-          y: square_y * TILE_SIZE,
-        }
-        const objectLayer = level.layers.find((l: any) => l.name === 'objects')
-        objectLayer.objects.push(newObject)
       }
     }
 

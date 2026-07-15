@@ -13,7 +13,7 @@ export interface PadState {
   jump: boolean
   run: boolean
   boost: boolean
-  /** CIRCLE / face-right — the editor's "B": cycle tiles up, chord to cycle down */
+  /** CIRCLE / face-right — merged with `run` as the editor's "B" (see leveleditor) */
   circle: boolean
   leftPressed: boolean
   rightPressed: boolean

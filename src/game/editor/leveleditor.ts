@@ -6,8 +6,12 @@
 // original: D-pad move, CROSS/jump place, SQUARE/TRIANGLE cycle sprite,
 // SELECT toggles tiles/objects mode, START saves & plays.
 //
-// Added for the web build: B (CIRCLE) steps the selected tile forward;
-// holding B (or a locked/turbo B) while pressing A (CROSS) steps it back.
+// Added for the web build: "B" is the game's run action (touch B, SQUARE,
+// keyboard C) merged with the raw face-right button / keyboard B. Tapping B
+// steps the selected tile back; holding B (or a locked/turbo B) while
+// pressing A (CROSS/place) steps it forward. Placement commits on A release,
+// and only when B was never part of the gesture — so a B+A chord can never
+// drop a stray tile.
 //
 // Analog up/down steps a zoom preview (2x..8x): the selected tile grows
 // into a translucent ghost centered on the cursor, card-flipping through
@@ -68,6 +72,16 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
   let firstFrame = true
   let moveHeldFrames = 0
   let frameCount = 0
+  // release-resolved A/B gestures (see updatePads): placeArmed latches the
+  // cursor cell of an A press that stayed chord-free (the tile lands where
+  // the press aimed, even if the cursor moves before release); bArmed marks
+  // a B press seen this hold (a B already held when the editor opened must
+  // not step on release); bChorded marks a B hold that A already consumed
+  let prevAHeld = false
+  let prevBHeld = false
+  let placeArmed: { x: number; y: number } | null = null
+  let bArmed = false
+  let bChorded = false
   // the SELECT+UP chord that opened the editor is usually still held on the
   // first frames — ignore input until the pad goes neutral once, so the
   // cursor doesn't march away and the mode doesn't toggle on entry
@@ -114,6 +128,32 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
     tilesetImage.draw(x, y, w, h)
   }
 
+  function placeAt(cell: { x: number; y: number }) {
+    if (editMode === 'tiles') {
+      const selectedTile = TILES[cur_sprite]
+      if (selectedTile) {
+        const tileIndex = cell.y * level.width + cell.x
+        fgData[tileIndex] = ts.firstgid + selectedTile.id
+      }
+    } else {
+      const newObject = {
+        height: 5,
+        id: level.nextobjectid++,
+        name: 'platformMovingUpAndDown',
+        properties: { distance: 80 },
+        propertytypes: { distance: 'int' },
+        rotation: 0,
+        type: 'platformMovingUpAndDown',
+        visible: true,
+        width: 24,
+        x: cell.x * TILE_SIZE,
+        y: cell.y * TILE_SIZE,
+      }
+      const objectLayer = level.layers.find((l: any) => l.name === 'objects')
+      objectLayer.objects.push(newObject)
+    }
+  }
+
   function updatePads(pad: ReturnType<typeof poll>) {
     const anyDirHeld = pad.left || pad.right || pad.up || pad.down
     moveHeldFrames = anyDirHeld ? moveHeldFrames + 1 : 0
@@ -142,51 +182,53 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
       }
     }
 
-    if (pad.runPressed) {
-      cur_sprite = (cur_sprite - 1 + TILES.length) % TILES.length
-    }
+    // TRIANGLE (keyboard X) still steps the selected tile forward on press
     if (pad.boostPressed) {
       cur_sprite = (cur_sprite + 1) % TILES.length
     }
 
-    // B (CIRCLE): press to step the selected tile up. Holding B (or a
-    // locked/turbo B) turns A into "step down" instead of a place — so
-    // B alone cycles forward, B+A cycles back. Check the chord first so a
-    // same-frame B+A steps down once, rather than the up-then-down canceling.
-    const bHeld = pad.circle
+    // "B" = the run action (touch B / SQUARE / keyboard C), merged with the
+    // raw face-right button (keyboard B). Gestures resolve on RELEASE so a
+    // chord can never double-act:
+    //  - press A while B is held (locked/turbo B included) → step forward
+    //  - tap B with no A involved → step back on release
+    //  - tap A with no B involved → place on release
+    // A press that joins a chord disarms its own release action, so B+A
+    // never drops a stray tile and never steps twice.
+    const bHeld = pad.run || pad.circle
+    const bPressed = pad.runPressed || pad.circlePressed
+    const aHeld = pad.jump
+    const aPressed = pad.jumpPressed
 
-    if (pad.jumpPressed && bHeld) {
-      cur_sprite = (cur_sprite - 1 + TILES.length) % TILES.length
-    } else {
-      if (pad.circlePressed) {
+    if (bPressed) bArmed = true
+
+    if (aPressed) {
+      if (bHeld) {
         cur_sprite = (cur_sprite + 1) % TILES.length
+        bChorded = true
+      } else {
+        placeArmed = { x: square_x, y: square_y }
       }
-      if (pad.jumpPressed) {
-        if (editMode === 'tiles') {
-          const selectedTile = TILES[cur_sprite]
-          if (selectedTile) {
-            const tileIndex = square_y * level.width + square_x
-            fgData[tileIndex] = ts.firstgid + selectedTile.id
-          }
-        } else {
-          const newObject = {
-            height: 5,
-            id: level.nextobjectid++,
-            name: 'platformMovingUpAndDown',
-            properties: { distance: 80 },
-            propertytypes: { distance: 'int' },
-            rotation: 0,
-            type: 'platformMovingUpAndDown',
-            visible: true,
-            width: 24,
-            x: square_x * TILE_SIZE,
-            y: square_y * TILE_SIZE,
-          }
-          const objectLayer = level.layers.find((l: any) => l.name === 'objects')
-          objectLayer.objects.push(newObject)
-        }
-      }
+    } else if (bPressed && aHeld) {
+      // B joined mid-A-hold — the player wanted the chord, not a placement
+      cur_sprite = (cur_sprite + 1) % TILES.length
+      bChorded = true
+      placeArmed = null
     }
+
+    if (prevAHeld && !aHeld) {
+      if (placeArmed) placeAt(placeArmed)
+      placeArmed = null
+    }
+    if (prevBHeld && !bHeld) {
+      // only a B press seen during this hold counts as a tap — a run button
+      // already down when the editor opened must not step on its release
+      if (bArmed && !bChorded) cur_sprite = (cur_sprite - 1 + TILES.length) % TILES.length
+      bArmed = false
+      bChorded = false
+    }
+    prevAHeld = aHeld
+    prevBHeld = bHeld
 
     if (pad.select) {
       editMode = editMode === 'tiles' ? 'objects' : 'tiles'
@@ -297,6 +339,12 @@ export function createLevelEditor(ps2: PS2Runtime, deps: LevelEditorDeps) {
     font.print(6, 3, `X${square_x} Y${square_y}  ${what}  Z${zoom}X`)
 
     if (inputArmed && pad.start) {
+      // a placement armed but not yet released commits with the save — the
+      // player's last tile must not vanish because START beat the A release
+      if (placeArmed) {
+        placeAt(placeArmed)
+        placeArmed = null
+      }
       firstFrame = true
       return {
         nextState: 'load_new_level',

@@ -16,8 +16,9 @@ import { consumeEditorRequest } from '../../lib/cmg'
 import { gamepad, BUTTON_INDEXES } from '../../lib/gamepad.svelte'
 import { touch } from '../../lib/touch.svelte'
 import { saveRtdbMap } from '../../lib/rtdb-maps'
+import { saveLocalMap } from '../../lib/map-store'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config'
-import { tilesetTextureFor } from '../level-assets'
+import { tilesetDataURLFor, tilesetTextureFor } from '../level-assets'
 import { createLevelEditor, type EditorResult } from '../editor/leveleditor'
 import { decodeLayer, findEditableTileLayer, tilesetInfo, writeLayerData } from '../editor/tiled'
 
@@ -92,7 +93,7 @@ export class LevelEditorScene extends Phaser.Scene {
       place: 'SPACE',
       prev: 'C',
       next: 'X',
-      // "B" — cycle tiles up; hold with place (A) to cycle down
+      // "B" alias — tap to cycle tiles back; hold with place (A) to cycle forward
       circle: 'B',
       mode: 'SHIFT',
       save: 'S',
@@ -186,12 +187,18 @@ export class LevelEditorScene extends Phaser.Scene {
     dir(MASK.LEFT, 'left', 'left')
     dir(MASK.RIGHT, 'right', 'right')
 
+    // raw face buttons are only safe to read when codemonkey.json hasn't
+    // given them an action — otherwise one physical press would fire both
+    // the action's mask and the raw mask
+    const rawButton = (index: number) =>
+      gamepad.buttonMap[index] === undefined && gamepad.buttonIsDown(index)
+
     set(MASK.CROSS, gamepad.isDown('jump') || touch.isDown('jump') || key('place').isDown)
     set(MASK.SQUARE, gamepad.isDown('run') || touch.isDown('run') || key('prev').isDown)
-    // TRIANGLE has no mapped action — read the raw top face button (SNES X)
-    set(MASK.TRIANGLE, gamepad.buttonIsDown(BUTTON_INDEXES.FACE_TOP) || key('next').isDown)
-    // "B" — CIRCLE / face-right has no mapped action; read the raw button
-    set(MASK.CIRCLE, gamepad.buttonIsDown(BUTTON_INDEXES.FACE_RIGHT) || key('circle').isDown)
+    // TRIANGLE has no mapped action by default — read the raw top face button (SNES X)
+    set(MASK.TRIANGLE, rawButton(BUTTON_INDEXES.FACE_TOP) || key('next').isDown)
+    // CIRCLE / face-right — the editor merges it with `run` as its "B"
+    set(MASK.CIRCLE, rawButton(BUTTON_INDEXES.FACE_RIGHT) || key('circle').isDown)
     set(MASK.SELECT, gamepad.isDown('select') || touch.isDown('select') || key('mode').isDown)
     set(MASK.START, gamepad.isDown('start') || touch.isDown('start') || key('save').isDown)
 
@@ -222,20 +229,19 @@ export class LevelEditorScene extends Phaser.Scene {
       data: this.level,
     })
 
-    // persist to the RTDB alongside the atlas records (fire-and-forget);
-    // if the network write fails, keep a local backup so the edits survive
+    // persist to the RTDB alongside the atlas records (fire-and-forget), and
+    // always keep a local copy in the map store — the edit shows up in the
+    // title's ONLINE LEVELS list (with its offline '.' mark) even when the
+    // RTDB write fails
     const level = this.level
     const levelKey = this.levelKey
-    saveRtdbMap(levelKey, level, this.tilesetDataURL()).then((ok) => {
-      if (!ok) {
-        try {
-          localStorage.setItem(`mario-sp:map-backup:${levelKey}`, JSON.stringify(level))
-        } catch {}
-      }
+    const png = tilesetDataURLFor(this, levelKey)
+    saveLocalMap(levelKey, { json: level, png })
+    saveRtdbMap(levelKey, level, png).then((ok) => {
       console.log(
         ok
           ? `🗺️ map saved to RTDB: maps/${levelKey}`
-          : `🗺️ RTDB save failed for maps/${levelKey} — backup kept in localStorage (map still plays from the local cache)`
+          : `🗺️ RTDB save failed for maps/${levelKey} — local copy kept (plays from ONLINE LEVELS)`
       )
     })
 
@@ -257,18 +263,4 @@ export class LevelEditorScene extends Phaser.Scene {
     this.scene.stop()
   }
 
-  private tilesetDataURL(): string | null {
-    try {
-      const source = this.textures.get(this.textureKey).getSourceImage() as
-        | HTMLImageElement
-        | HTMLCanvasElement
-      const canvas = document.createElement('canvas')
-      canvas.width = source.width
-      canvas.height = source.height
-      canvas.getContext('2d')!.drawImage(source, 0, 0)
-      return canvas.toDataURL('image/png')
-    } catch {
-      return null
-    }
-  }
 }

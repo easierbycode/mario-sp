@@ -4,6 +4,8 @@ import { gamepad } from '../../lib/gamepad.svelte'
 import { touch } from '../../lib/touch.svelte'
 import { consumeEditorRequest } from '../../lib/cmg'
 import { fetchRtdbMap } from '../../lib/rtdb-maps'
+import { loadLocalMap, saveLocalMap } from '../../lib/map-store'
+import { openLevelInSpriteX } from '../../lib/spritex-editor'
 import { tilesetTextureFor } from '../level-assets'
 import { Box } from '../objects/box'
 import { Brick } from '../objects/brick'
@@ -222,6 +224,18 @@ export class GameScene extends Phaser.Scene {
     // create() bails early while an RTDB map import is in flight
     if (!this.player) return
 
+    // the CMG OSD "Level Editor" action hands the level family to SpriteX
+    // (the launcher swaps the frame to it); the in-game editor stays on the
+    // SELECT+UP chord for everything else. If the hand-off can't even be
+    // posted (sandboxed parent, no maps), fall back to the in-game editor
+    // so the OSD button never turns into a no-op.
+    if (consumeEditorRequest()) {
+      openLevelInSpriteX(this, this.currentLevel).then((posted) => {
+        if (!posted && this.scene.isActive()) this.openEditor()
+      })
+      return
+    }
+
     if (this.editorTriggered()) {
       this.openEditor()
       return
@@ -231,8 +245,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * SELECT+↑ (SNES: SELECT+L2) during gameplay, SHIFT+↑ on keyboard, the
-   * touch pad's SELECT+↑, or the CMG launcher's OSD "Level Editor" action.
+   * SELECT+↑ (SNES: SELECT+L2) during gameplay, SHIFT+↑ on keyboard, or the
+   * touch pad's SELECT+↑ — opens the in-game editor.
    */
   private editorTriggered(): boolean {
     const selectHeld =
@@ -244,7 +258,6 @@ export class GameScene extends Phaser.Scene {
     const touchFresh = touch.justPressed('up') || touch.justPressed('select')
 
     return (
-      consumeEditorRequest() ||
       gamepad.justPressed('editor') ||
       (selectHeld && upHeld && (keyboardFresh || touchFresh))
     )
@@ -263,10 +276,24 @@ export class GameScene extends Phaser.Scene {
     this.scene.pause()
   }
 
-  /** Import a map stored at RTDB /maps/<key> = { json, png }, then restart. */
+  /**
+   * Import a map stored at RTDB /maps/<key> = { json, png }, then restart.
+   * Fresh fetches stream straight into play and are copied to the local map
+   * store in the background (CMG Network style); when the RTDB is
+   * unreachable the local copy plays instead.
+   */
   private async loadMapFromRtdb(key: string): Promise<void> {
     const loading = this.add.bitmapText(8, 8, 'font', 'LOADING MAP...', 8)
-    const record = await fetchRtdbMap(key)
+    let record = await fetchRtdbMap(key)
+    const fromLocal = !record
+    if (fromLocal) {
+      record = await loadLocalMap(key)
+      if (record) {
+        // could be offline — or the RTDB record was deleted/corrupted and a
+        // stale copy is masking it; say so instead of silently substituting
+        console.warn(`🗺️ RTDB miss for "${key}" — playing the local copy`)
+      }
+    }
     if (!this.scene.isActive()) return
     loading.destroy()
 
@@ -296,6 +323,13 @@ export class GameScene extends Phaser.Scene {
     ) {
       fallback(`map "${key}" needs an embedded tileset and uncompressed layers`)
       return
+    }
+
+    // keep a local copy (CMG Network style: stream now, replay offline) —
+    // only once it's known playable, and snapshotted before the objects/player
+    // synthesis below mutates the JSON
+    if (!fromLocal) {
+      saveLocalMap(key, { json: structuredClone(json), png: record.png })
     }
 
     // GameScene requires an 'objects' layer and a player object — synthesize

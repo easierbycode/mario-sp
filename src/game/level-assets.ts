@@ -20,3 +20,19 @@ export function tilesetTextureFor(scene: Phaser.Scene, levelKey: string): Tilese
   if (levelKey === 'level4-2') return { key: 'tiles42' }
   return { key: 'tiles' }
 }
+
+/** A level's tileset texture re-encoded as a PNG data: URL (RTDB/SpriteX shape). */
+export function tilesetDataURLFor(scene: Phaser.Scene, levelKey: string): string | null {
+  try {
+    const source = scene.textures
+      .get(tilesetTextureFor(scene, levelKey).key)
+      .getSourceImage() as HTMLImageElement | HTMLCanvasElement
+    const canvas = document.createElement('canvas')
+    canvas.width = source.width
+    canvas.height = source.height
+    canvas.getContext('2d')!.drawImage(source, 0, 0)
+    return canvas.toDataURL('image/png')
+  } catch {
+    return null
+  }
+}

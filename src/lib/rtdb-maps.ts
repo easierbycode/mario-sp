@@ -34,14 +34,30 @@ function ensureDataURL(png: unknown): string | null {
   return png.startsWith('data:') ? png : `data:image/png;base64,${png}`
 }
 
+/** Normalize a raw { json, png } record (RTDB or local cache) — see quirks above. */
+export function normalizeMapRecord(record: any): RtdbMap | null {
+  const json = normalizeJson(record?.json)
+  if (!json) return null
+  return { json, png: ensureDataURL(record?.png) }
+}
+
 export async function fetchRtdbMap(key: string): Promise<RtdbMap | null> {
   try {
     const response = await fetch(`${DATABASE_URL}/maps/${encodeURIComponent(sanitizeMapKey(key))}.json`)
     if (!response.ok) return null
+    return normalizeMapRecord(await response.json())
+  } catch {
+    return null
+  }
+}
+
+/** Key list of every map in the RTDB, or null when unreachable (offline). */
+export async function listRtdbMapKeys(): Promise<string[] | null> {
+  try {
+    const response = await fetch(`${DATABASE_URL}/maps.json?shallow=true`)
+    if (!response.ok) return null
     const record = await response.json()
-    const json = normalizeJson(record?.json)
-    if (!json) return null
-    return { json, png: ensureDataURL(record?.png) }
+    return record && typeof record === 'object' ? Object.keys(record).sort() : []
   } catch {
     return null
   }

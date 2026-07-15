@@ -9,9 +9,14 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  /* CMG Nintendo theme's dark-navy backdrop (body.theme-nintendo → #0d0f1a),
-     so the letterbox around the game matches the launcher's Nintendo skin. */
-  background: #0d0f1a;
+  /* CMG Nintendo theme's backdrop (body.theme-nintendo): two navy glows in the
+     top-left / bottom-right corners over a dark-navy base, so the letterbox
+     around the game matches the launcher's Nintendo skin. */
+  background:
+    radial-gradient(1000px 500px at 20% -10%, #1b203a 0%, transparent 60%),
+    radial-gradient(1000px 500px at 80% 110%, #1b203a 0%, transparent 60%),
+    radial-gradient(ellipse 60% 70% at 50% 50%, rgba(15, 22, 34, 0.9), #0d0f1a 80%);
+  background-color: #0d0f1a;
   color: #f8f8f8;
   font-family: 'Courier New', monospace;
 }

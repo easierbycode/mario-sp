@@ -9,7 +9,9 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #1a1a2e;
+  /* CMG Nintendo theme's dark-navy backdrop (body.theme-nintendo → #0d0f1a),
+     so the letterbox around the game matches the launcher's Nintendo skin. */
+  background: #0d0f1a;
   color: #f8f8f8;
   font-family: 'Courier New', monospace;
 }

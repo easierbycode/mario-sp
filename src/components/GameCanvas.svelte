@@ -23,18 +23,23 @@
 
   export function enterFullscreen(): void {
     if (document.fullscreenElement) return
+    // Only request fullscreen while a genuine pointer/keyboard gesture is still
+    // active. The browser rejects requests made without transient user
+    // activation (e.g. from the gamepad poll loop), so skip quietly in that
+    // case instead of firing a request that logs a rejection. Older engines
+    // without navigator.userActivation fall through and rely on the catch.
+    const activation = (navigator as any).userActivation
+    if (activation && !activation.isActive) return
     // iPhone Safari has no element fullscreen API at all — bail rather than
     // throw a TypeError inside the caller's pointer handler
     const request =
       frame?.requestFullscreen ?? (frame as any)?.webkitRequestFullscreen
     if (!frame || typeof request !== 'function') return
     try {
-      // may be rejected without a user gesture (e.g. from a gamepad button)
-      Promise.resolve(request.call(frame)).catch((error) => {
-        console.log('Fullscreen request rejected:', error)
-      })
-    } catch (error) {
-      console.log('Fullscreen request rejected:', error)
+      // a late-expiring activation can still be refused — swallow it quietly
+      Promise.resolve(request.call(frame)).catch(() => {})
+    } catch {
+      /* ignore */
     }
   }
 </script>

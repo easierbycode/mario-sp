@@ -31,28 +31,28 @@
     gamepad.onaction = onaction
     touch.onaction = onaction
 
-    // start in fullscreen: browsers only honor requestFullscreen from a user
-    // gesture, so keep promoting the frame on taps/clicks — and on gamepad
-    // button presses, for browsers that count those as activation — until
-    // one lands (the F key keeps its toggle for keyboard players)
+    // start in fullscreen on the player's first tap/click: browsers only honor
+    // requestFullscreen from a genuine pointer/keyboard gesture, so promote the
+    // frame on pointerdown until one lands, then stop listening. Gamepad input
+    // is poll-based and never counts as user activation, so it can't open
+    // fullscreen on its own — the F key and the SELECT+← / HOME chord (routed
+    // through onaction above) cover pad players without spamming rejected
+    // requests from the poll loop.
     const onPointer = () => gameCanvas?.enterFullscreen()
     const onFullscreenChange = () => {
       if (document.fullscreenElement) {
         window.removeEventListener('pointerdown', onPointer, true)
         document.removeEventListener('fullscreenchange', onFullscreenChange)
-        gamepad.onanybutton = null
       }
     }
     window.addEventListener('pointerdown', onPointer, true)
     document.addEventListener('fullscreenchange', onFullscreenChange)
-    gamepad.onanybutton = () => gameCanvas?.enterFullscreen()
 
     return () => {
       cleanupGamepad()
       cleanupTouch()
       cleanupCmg()
       gamepad.onaction = null
-      gamepad.onanybutton = null
       touch.onaction = null
       window.removeEventListener('pointerdown', onPointer, true)
       document.removeEventListener('fullscreenchange', onFullscreenChange)

@@ -43,10 +43,12 @@ export default {
 
   // Vegas: 16px tiles but GB game-feel — the GB movement profile with all
   // distances doubled, so jumps stay ~4.3 tiles like level1 instead of the
-  // SMA4 profile's 5.6+ (too high for the 14-tile-tall casino map)
+  // SMA4 profile's 5.6+ (too high for the 14-tile-tall casino map).
+  // Spawn drops in just above the casino floor (top y=208) — a short hop
+  // instead of a half-map free-fall out of the 4-2 pipe
   VEGAS: {
     physics       : 'gb',
     physicsScale  : 2,
-    spawn         : { x: 16, y: 128, dir: 'down' },
+    spawn         : { x: 16, y: 192, dir: 'down' },
   },
 }

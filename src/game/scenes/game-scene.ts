@@ -134,6 +134,17 @@ export class GameScene extends Phaser.Scene {
     // setCollisionByProperty matches a tile on any listed property
     this.foregroundLayer.setCollisionByProperty({ collide: true, collision: true })
 
+    // size the physics world to the map BEFORE any object exists: a scene
+    // restart resets the bounds to the 160x144 canvas, and mario's
+    // fell-into-a-hole check reads bounds.bottom — with the stale default he
+    // would "die" at y>144 while still dropping toward a taller map's floor
+    this.physics.world.setBounds(
+      0,
+      0,
+      this.map.widthInPixels,
+      this.map.heightInPixels
+    )
+
     // *****************************************************************
     // GAME OBJECTS
     // *****************************************************************
@@ -209,15 +220,6 @@ export class GameScene extends Phaser.Scene {
       this.map.heightInPixels
     )
 
-    // mario's fell-into-a-hole check compares against world.bounds.bottom,
-    // which defaults to the 160x144 canvas — too short for Vegas' 224px-tall
-    // map (he'd "die" mid-air while still above the ground)
-    this.physics.world.setBounds(
-      0,
-      0,
-      this.map.widthInPixels,
-      this.map.heightInPixels
-    )
   }
 
   update(): void {
@@ -652,6 +654,7 @@ export class GameScene extends Phaser.Scene {
       if (this.currentLevel === 'levelVegasRoom1') {
         // stage 3 (airship) complete — drop down into levele1 from above
         this.registry.set('level', 'levele1')
+        this.registry.set('world', 'E-1')
         this.registry.set('spawn', { x: 16, y: 832, dir: 'down' })
         this.scene.stop('GameScene')
         this.scene.stop('HUDScene')
@@ -659,6 +662,7 @@ export class GameScene extends Phaser.Scene {
       } else if (this.currentLevel === 'levelVegas') {
         // stage 2 complete — board the airship (levelVegasRoom1)
         this.registry.set('level', 'levelVegasRoom1')
+        this.registry.set('world', '2-2')
         this.registry.set('physics', Constants.VEGAS.physics)
         this.registry.set('physicsScale', Constants.VEGAS.physicsScale)
         this.registry.set('spawn', { x: 16, y: 128, dir: 'down' })
@@ -675,6 +679,7 @@ export class GameScene extends Phaser.Scene {
       } else {
         // level4-2 complete — continue into levelVegas (16px tiles, GB feel)
         this.registry.set('level', 'levelVegas')
+        this.registry.set('world', '2-1')
         this.registry.set('physics', Constants.VEGAS.physics)
         this.registry.set('physicsScale', Constants.VEGAS.physicsScale)
         this.registry.set('spawn', Constants.VEGAS.spawn)

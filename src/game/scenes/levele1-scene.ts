@@ -35,7 +35,14 @@ const QUESTION_BLOCK_GID = 226
 const USED_BLOCK_GID = 209
 const VINE_TOP_FRAME = 395
 const VINE_FRAME = 438
-const CLIMB_VELOCITY = -80
+// SMB3 climbs up slower than it slides down; cresting the top gets a small
+// pop so mario can mount a ledge beside the vine
+const CLIMB_UP_VELOCITY = -80
+const CLIMB_DOWN_VELOCITY = 120
+const VINE_TOP_POP_VELOCITY = -140
+// frames before the vine can be re-grabbed after jumping off, so a held ↑
+// doesn't snap mario straight back on
+const VINE_REGRAB_COOLDOWN = 12
 
 export class LevelE1Scene extends Phaser.Scene {
   // tilemap
@@ -49,6 +56,11 @@ export class LevelE1Scene extends Phaser.Scene {
   private portals: Phaser.GameObjects.Group
   private vines: Phaser.Physics.Arcade.StaticGroup
   private currentLevel: string
+
+  // vine climbing state (see updateVineClimbing)
+  private climbing = false
+  private vineX: number | null = null
+  private vineRegrabCooldown = 0
 
   constructor() {
     super({
@@ -69,6 +81,11 @@ export class LevelE1Scene extends Phaser.Scene {
   }
 
   create(): void {
+    // scene instances persist across restart() — reset the climb state
+    this.climbing = false
+    this.vineX = null
+    this.vineRegrabCooldown = 0
+
     // set (not multiply — the world survives scene restarts) the scaled gravity
     this.physics.world.gravity.y = BASE_GRAVITY * PHYSICS_SCALE
 
@@ -201,21 +218,82 @@ export class LevelE1Scene extends Phaser.Scene {
     if (this.player) {
       this.player.update()
 
-      // vines are climbable: hold up while touching one. Runs AFTER Mario's
-      // input handling — the SMA4 profile zeroes velocityY while grounded,
-      // which would cancel the climb off a block top otherwise.
-      if (
-        this.player.actionIsDown('up') &&
-        this.physics.overlap(this.player, this.vines)
-      ) {
-        this.player.body.setVelocityY(CLIMB_VELOCITY)
-      }
+      // runs AFTER Mario's input handling — the SMA4 profile zeroes
+      // velocityY while grounded, which would cancel a climb off a block top
+      this.updateVineClimbing()
 
       // WORLD WRAP
       if (this.currentLevel === 'levele1RoomKL') {
         this.physics.world.wrap(this.player)
       }
     }
+  }
+
+  /**
+   * SMB3-style vine handling: press ↑ on a vine to grab it, ↑/↓ climbs,
+   * and jump leaps off — steered left or right by the held direction.
+   */
+  private updateVineClimbing(): void {
+    const body = this.player.body
+    const onVine = this.physics.overlap(this.player, this.vines)
+    if (this.vineRegrabCooldown > 0) this.vineRegrabCooldown--
+
+    if (!this.climbing) {
+      if (
+        onVine &&
+        this.vineRegrabCooldown === 0 &&
+        this.player.actionIsDown('up')
+      ) {
+        this.climbing = true
+        // hug the vine — grabs feel like SMB3's and mario never hangs off
+        // the side of the stalk
+        if (this.vineX !== null) this.player.setX(this.vineX)
+        body.setAllowGravity(false)
+        body.setAcceleration(0, 0)
+        body.setVelocity(0, 0)
+      }
+      return
+    }
+
+    const letGo = () => {
+      this.climbing = false
+      body.setAllowGravity(true)
+    }
+
+    // climbed past the end of the vine — pop up so mario crests a ledge
+    if (!onVine) {
+      const wasRising = body.velocity.y < 0
+      letGo()
+      if (wasRising) body.setVelocityY(VINE_TOP_POP_VELOCITY)
+      return
+    }
+
+    // jump leaps off, steered by the held direction (SMB3)
+    if (this.player.actionJustPressed('jump')) {
+      letGo()
+      this.vineRegrabCooldown = VINE_REGRAB_COOLDOWN
+      const dir = this.player.actionIsDown('left')
+        ? -1
+        : this.player.actionIsDown('right')
+          ? 1
+          : 0
+      this.player.vineJump(dir)
+      return
+    }
+
+    // stick to the vine; ↑ climbs, ↓ slides down (faster, as in SMB3)
+    body.setAcceleration(0, 0)
+    body.setVelocityX(0)
+    if (this.player.actionIsDown('up')) {
+      body.setVelocityY(CLIMB_UP_VELOCITY)
+    } else if (this.player.actionIsDown('down')) {
+      body.setVelocityY(CLIMB_DOWN_VELOCITY)
+    } else {
+      body.setVelocityY(0)
+    }
+
+    // sliding down to solid ground releases the vine
+    if (body.onFloor()) letGo()
   }
 
   private addMapImage(
@@ -348,6 +426,7 @@ export class LevelE1Scene extends Phaser.Scene {
   private growVine(tile: Phaser.Tilemaps.Tile): void {
     const x = tile.getCenterX()
     const blockTop = tile.getTop()
+    this.vineX = x
     // grow one segment at a time, stopping under the first solid tile above
     // (room A/B has a shelf between the block and the ceiling)
     let topRow = 0
@@ -372,7 +451,9 @@ export class LevelE1Scene extends Phaser.Scene {
           'sma4',
           frame
         ) as Phaser.Types.Physics.Arcade.SpriteWithStaticBody
-        segment.setDepth(Constants.DEPTH.foregroundSecondary)
+        // foregroundMain, not Secondary — the rooms' metal-brick backdrop is
+        // a depth-0 tileSprite, so anything below 0 is invisible behind it
+        segment.setDepth(Constants.DEPTH.foregroundMain)
         grown++
       },
     })

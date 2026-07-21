@@ -82,6 +82,34 @@ export class Mario extends Phaser.GameObjects.Sprite {
     return this.keys.get(action)?.isDown || gamepad.isDown(action) || touch.isDown(action)
   }
 
+  /** Fresh press this frame for an action, merged like actionIsDown. */
+  public actionJustPressed(action: 'up' | 'left' | 'right' | 'down' | 'jump' | 'run'): boolean {
+    const key = this.keys.get(action)
+    return (
+      (key !== undefined && Phaser.Input.Keyboard.JustDown(key)) ||
+      gamepad.justPressed(action) ||
+      touch.justPressed(action)
+    )
+  }
+
+  /**
+   * Jump off a vine (SMB3): the standing-jump impulse of the active movement
+   * profile, steered left/right by the held direction.
+   */
+  public vineJump(dir: -1 | 0 | 1): void {
+    const s = this.physicsScale
+    const sma4 = this.currentScene.registry.get('physics') === 'sma4'
+    this.body.setAllowGravity(true)
+    this.body.setVelocityY((sma4 ? -206.25 : JUMP_VELOCITY) * s)
+    if (dir !== 0) {
+      this.body.setVelocityX(
+        dir * (sma4 ? SMA4.WALK_MAX_VELOCITY : WALK_MAX_VELOCITY) * s
+      )
+      this.setFlipX(dir < 0)
+    }
+    this.isJumping = true
+  }
+
   constructor(aParams: ISpriteConstructor) {
     super(aParams.scene, aParams.x, aParams.y, aParams.texture, aParams.frame)
 
